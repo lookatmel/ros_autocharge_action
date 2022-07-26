@@ -1,0 +1,269 @@
+#ifndef ROS_AUTOCHARGE_ACTION_H
+#define ROS_AUTOCHARGE_ACTION_H
+
+#include "ros/ros.h" 
+#include "tf/transform_broadcaster.h"
+#include "tf/transform_listener.h"
+#include <serial/serial.h>
+#include "sensor_msgs/LaserScan.h"
+
+#include <actionlib/server/simple_action_server.h>
+#include <ros_autocharge_action/action1Action.h>
+
+
+
+#define VISUAL_ANGLE             ((float)(120 * M_PI / 180.0))      //no use
+#define ROUND_DISTANCE           ((float)1.5)                       //distance of Center alignment
+#define ROUND_MIN                ((float)0.7)                       //minimum distance of Center alignment
+#define ROUND_ANGLE_MAX          ((float)3.14)                      //max angle of Center alignment
+#define PANNEL_LENGTH            ((float)0.17)
+#define OBSTACLE_DISTANCE        ((float)0.3)
+#define OBSTACLE_ANGLE_MIN       ((float)(-180 * M_PI / 180.0))      // start angle of obstacle detection
+#define OBSTACLE_ANGLE_MAX       ((float)(180 * M_PI / 180.0))       // end angle of obstacle detection
+#define OBSTACLE_DRADZONE        ((float)0.6)                       // ignore obstacle when pretouched the charger
+#define PRETOUCH_DISTANCE        ((float)0.75)                      // slow down to touch the charger
+#define MOVEBACK_DISTANCE        ((float)0.5)
+
+
+typedef actionlib::SimpleActionServer<ros_autocharge_action::action1Action> AutoCharge_Server;
+
+
+class ROSAutoCharge
+{
+    protected:
+
+
+    public:
+        enum StepEnum
+        {
+            STEP_INIT,
+            STEP_SEARCH,
+            STEP_ROUND,
+            STEP_SPIN,
+            STEP_AIMING,
+            STEP_PRETOUCH,
+            STEP_TOUCH,
+            STEP_MOVEBACK,
+            STEP_CANCEL,
+            STEP_SUCCESS,
+            STEP_RECOVERY = 0xFE,
+            STEP_ERROR = 0xFF
+        };
+        ROSAutoCharge();
+        ~ROSAutoCharge();
+
+        void executeCB(const ros_autocharge_action::action1GoalConstPtr &goal);
+        void LaserScanCallback(const sensor_msgs::LaserScan &scan);
+        void loop();
+        void start();
+        void stop();
+        void cancel();
+        void shutdown();
+        
+
+        void setWaitStable(unsigned int sec);
+        bool isStable();
+        inline bool isEqual(double num1, double num2)
+        {
+            return (std::fabs(num1 - num2) <= 0.01);
+        }
+
+        void setASpeedAccParam(float acc = 1.57, float dec = 3.14){
+            ASpeed.facc = acc;
+            ASpeed.bacc = acc;
+            ASpeed.fdec = dec;
+            ASpeed.bdec = dec;
+        }
+        void setLSpeedAccParam(float acc = 0.5, float dec = 1){
+            LSpeed.facc = acc;
+            LSpeed.bacc = acc;
+            LSpeed.fdec = dec;
+            LSpeed.bdec = dec;
+        }
+        void setLSpeedWithAcc(float speed){
+            LSpeed.setspeed = getAccSpeed(LSpeed.facc,LSpeed.fdec, LSpeed.bacc, LSpeed.bdec, speed, LSpeed.setspeed, LSpeed.setspeed, period.toSec());
+        }
+        void setASpeedWithAcc(float speed){
+            ASpeed.setspeed = getAccSpeed(ASpeed.facc,ASpeed.fdec, ASpeed.bacc, ASpeed.bdec, speed, ASpeed.setspeed, ASpeed.setspeed, period.toSec());
+        }
+        void setLSpeed(float speed){
+            LSpeed.setspeed = speed;
+        }
+        void setASpeed(float speed){
+            ASpeed.setspeed = speed;
+        }
+
+        void setAllSpeedZero(){
+            LSpeed.setspeed = 0;
+            ASpeed.setspeed = 0;
+        }
+
+        void setAllSpeedZeroWithAcc(){
+            LSpeed.setspeed = getAccSpeed(LSpeed.facc,LSpeed.fdec, LSpeed.bacc, LSpeed.bdec, 0, LSpeed.setspeed, LSpeed.setspeed, period.toSec());
+            ASpeed.setspeed = getAccSpeed(ASpeed.facc,ASpeed.fdec, ASpeed.bacc, ASpeed.bdec, 0, ASpeed.setspeed, ASpeed.setspeed, period.toSec());
+        }
+
+        void publishZeroSpeed(){
+            ASpeed.setspeed = 0;
+            LSpeed.setspeed = 0;
+            publishSpeed();
+        }
+
+        void publishSpeed(){
+            cmd_vel.linear.x = LSpeed.setspeed;
+            cmd_vel.angular.z = ASpeed.setspeed;
+            cmd_pub.publish(cmd_vel);
+        }
+        
+        unsigned int getStep();
+
+
+    private:
+        ros::NodeHandle nh;
+        tf::TransformListener listener, laser_listener;
+        AutoCharge_Server *as;
+
+        ros::Subscriber laser_scan_sub;
+        ros::Publisher cmd_pub;
+
+        std::string laser_topic_, cmd_vel_topic_, pannel_frame_id_, base_frame_id_, laser_frame_id_;
+
+        tf::StampedTransform transform_;
+
+        ros::Duration period, motion_waittime, stable_waittime;
+        ros::Duration scan_overtime, pannel_overtime, obstacle_overtime;
+
+        ros::Time search_time, last_scan_time, last_time, tf_now, tf_last, last_stable_time, cancel_time;
+
+        geometry_msgs::Twist cmd_vel;
+
+        ros_autocharge_action::action1Feedback feedback;
+        ros_autocharge_action::action1Result result;
+
+        int state;
+        unsigned int step;
+        bool tf_rev;
+        bool have_obstacle_;
+        bool wait_stable;
+        bool moveback;
+        bool scan_ready;
+
+        float target_speed, target_aspeed, target_angle;
+        float facc, fdec, bacc, bdec;
+
+        float x, y, yaw, x_temp, y_temp, yaw_temp;
+        
+
+        struct acc_data
+        {
+            float facc, fdec, bacc, bdec;
+            float targetspeed, setspeed;
+        }LSpeed, ASpeed;
+        
+        std::string UARTPort_;
+        int UARTBaudrate_;
+
+        class ChargerUART *uart_;
+
+        // param
+        std::string movebase_polygon_str_;
+        std::vector<float*> movebase_polygon_;
+        float moveback_distance_;
+        float visual_angle_;
+        float round_distance_;
+        float round_min_distance_;
+        float round_angle_max_;
+        float pannel_length_;
+        float obstacle_distance_;
+        float obstacle_angle_min_;
+        float obstacle_angle_max_;
+        float obstacle_deadzone_;
+        float pretouch_distance_;
+
+        void StepChange(StepEnum nextstep);
+        float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);
+};
+
+
+
+
+class ChargerUART
+{
+    public:
+        enum port_state : uint8_t
+        {
+            IDLE,
+            INIT,
+            OPENED,
+            RETRY,
+            ERROR
+        };
+
+        typedef struct
+        {
+            bool chargecheck;
+            bool button1;
+            bool button2;
+            bool button3;
+            bool button4;
+        }ChargeDataTypedef;
+
+        ChargerUART();
+        ChargerUART(std::string uart_port, uint32_t baudrate);
+        ChargerUART(std::string uart_port, uint32_t baudrate, float retry_interval, uint32_t retry_count);
+        ~ChargerUART();
+
+        void PortLoop();
+        void ensurePortState()
+        {
+            state_ = INIT;
+        }
+        bool isOpen()
+        {
+            return (state_ == OPENED);
+        }
+        bool setSwitchState(bool state);
+        bool getChargerData(ChargeDataTypedef &data);
+
+    private:
+        serial::Serial se_;
+        std::string uart_port_;
+        uint32_t baudrate_;
+
+        enum port_state state_;
+
+        bool wait_response_;
+
+        ros::Time retry_time_;
+        ros::Duration retry_interval_;
+        uint32_t retry_count_;
+        ros::Duration response_overtime_;
+
+        void setRetry();
+};
+
+
+const float EPS = 1e-3;
+
+const int NONE = 0;
+const int CROSS = 1;
+const int PARALLEL = 2;
+const int COLLINEATION = 3;
+
+
+typedef struct 
+{
+    double x, y;
+}Point;
+
+typedef struct
+{
+    Point p1, p2;
+}Line;
+
+inline bool isEqual(double num1, double num2);
+bool PointIsONLine(Point p, Line l);
+int CalCrossPoint(Line L1, Line L2, Point& P, double& length);
+
+
+#endif

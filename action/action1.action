@@ -1,0 +1,10 @@
+# Define the goal
+uint32 startmode
+---
+# Define the result
+uint32 result
+---
+# Define a feedback message
+uint32 Step
+float32 Voltage
+float32 Current
