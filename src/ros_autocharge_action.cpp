@@ -190,13 +190,16 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
         {
             case STEP_SUCCESS :
                 as->setSucceeded(result);
+                shutdown();
                 ROS_INFO("Action is Succeed!");
                 break;
             case STEP_CANCEL :
                 as->setPreempted(result);
+                shutdown();
                 break;
             case STEP_ERROR :
                 as->setAborted(result);
+                shutdown();
                 ROS_INFO("Action is Failed!");
                 break;
             default:break;
@@ -318,7 +321,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
     static unsigned int angle_division, scan_min_index, scan_max_index;
     static float scan_angle_min = 0, scan_angle_max = 0;
     static float laser_range_max = 20.0;
-    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan.angle_min || scan_angle_max != scan.angle_max))
+    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan.angle_min || scan_angle_max != scan.angle_max) || scan_ready != 1)
     {
         try
         {
@@ -351,20 +354,28 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
         angle_division = (scan.angle_max - scan.angle_min) / scan.angle_increment;
         ROS_INFO("Scan Min Angle:%0.4f , Max Angle:%0.4f , Division:%d , Scan size:%ld , Inc:%0.5f ", \
                     scan_angle_min * 180 / M_PI, scan_angle_max * 180 /M_PI, angle_division, scan.ranges.size(), scan.angle_increment);
+        
         polygon.clear();
         obstacle_thr.clear();
         if(isEqual(fabs(laser_roll / M_PI), 0))
         {
             for(auto i = movebase_polygon_.begin(); i != movebase_polygon_.end(); ++i)
             {
-                polygon.push_back(vector<float>((float)(*i)[0] + laser_x, -((float)(*i)[1] + laser_y)));
+                vector<float>xy_temp;
+                xy_temp.push_back((float)(*i)[0] - laser_x);
+                xy_temp.push_back(-((float)(*i)[1] - laser_y));
+                polygon.push_back(move(xy_temp));
+
             }
         }
         else
         {
             for(auto i = movebase_polygon_.begin(); i != movebase_polygon_.end(); ++i)
             {
-                polygon.push_back(vector<float>((float)(*i)[0] + laser_x, (float)(*i)[1] + laser_y));
+                vector<float>xy_temp;
+                xy_temp.push_back((float)(*i)[0] - laser_x);
+                xy_temp.push_back(((float)(*i)[1] - laser_y));
+                polygon.push_back(move(xy_temp));
             }
         }
 
@@ -400,7 +411,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
                 int tmp = CalCrossPoint(l1, l2, crosspoint, length);
                 if(tmp == CROSS || tmp == COLLINEATION)
                 {
-                    obstacle_thr.push_back(length + obstacle_distance_);
+                    obstacle_thr.push_back(length + obstacle_distance_); 
                     break;
                 }
                 else if(j + 1 == polygon.cend())
@@ -421,13 +432,6 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
     }
 
     bool obstacle_temp = 0;
-    // for(int i = scan_min_index; i <= scan_max_index; i++)
-    // {
-    //     if(scan.ranges[i] < obstacle_distance_)
-    //     {
-    //         obstacle_temp |= 1;
-    //     }
-    // }
     int obstacle_cnt = 0;
     for(auto j = obstacle_thr.cbegin(); j != obstacle_thr.cend(); ++j)
     {
@@ -626,7 +630,7 @@ void ROSAutoCharge::loop()
 
             ROS_INFO("Target Angle:%0.4f X:%0.4f Y: %0.4f Angle:%0.4f Limit:%0.4f", target_angle * 180 / M_PI, x, y, yaw * 180 / M_PI, round_angle_max_ * 180 / M_PI);
 
-            target_aspeed = (target_angle - yaw) * 0.5;
+            target_aspeed = (target_angle - yaw) * 0.3;
             setASpeedWithAcc(target_aspeed);
             if(fabs(target_angle - yaw) > 0.17)
             {
@@ -1010,14 +1014,15 @@ void ChargerUART::PortLoop()
 }
 
 
-inline bool isEqual(double num1, double num2)
+bool isEqual(double num1, double num2, double eps)
 {
-    return (std::fabs(num1 - num2) <= EPS);
+    return (std::fabs(num1 - num2) <= eps);
 }
 
 bool PointIsONLine(Point p, Line l)
 {
-    return(((p.x >= l.p1.x && p.x <= l.p2.x)||(p.x <= l.p1.x && p.x >= l.p2.x)) && ((p.y >= l.p1.y && p.y <= l.p2.y)||(p.y <= l.p1.y && p.y >= l.p2.y)));
+    return(((p.x >= l.p1.x && p.x <= l.p2.x) || (p.x <= l.p1.x && p.x >= l.p2.x) || isEqual(p.x, l.p1.x) || isEqual(p.x, l.p2.x)) &&  \
+            ((p.y >= l.p1.y && p.y <= l.p2.y) || (p.y <= l.p1.y && p.y >= l.p2.y) || isEqual(p.y, l.p1.y) || isEqual(p.y, l.p2.y)));
 }
 
 int CalCrossPoint(Line L1, Line L2, Point& P, double& length)
