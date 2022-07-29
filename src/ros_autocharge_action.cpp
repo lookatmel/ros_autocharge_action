@@ -490,7 +490,7 @@ void ROSAutoCharge::loop()
     chargedata_flag = uart_->getChargerData(chargedata);
     
     
-    pannel_overtime = ros::Time::now() - tf_last;
+    // pannel_overtime = ros::Time::now() - tf_last;
     period = ros::Time::now() - last_time;
     // ROS_INFO("Period:%0.5f", period.toSec());
 
