@@ -6,7 +6,7 @@ using namespace std;
 
 
 ROSAutoCharge::ROSAutoCharge()
-    :as(NULL)
+    :as(NULL),reflector(0.15, 2.0, 400)
 {
     ros::NodeHandle nh_private("~");
 	nh_private.param<std::string>("laser_topic", laser_topic_, "/scan");
@@ -28,6 +28,10 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<float>("pretouch_distance", pretouch_distance_, PRETOUCH_DISTANCE); 
     nh_private.param<float>("moveback_distance", moveback_distance_, MOVEBACK_DISTANCE);
     nh_private.param<std::string>("movebase_polygon", movebase_polygon_str_, "[[0.29,-0.22],[0.29,0.22],[-0.29,0.22],[-0.29,-0.22]]"); 
+
+    reflector.SetBaseFrame(base_frame_id_);    
+    reflector.SetLaserFrame(laser_frame_id_); 
+    reflector.Debug_Info(true);
 
     YAML::Node node = YAML::Load(movebase_polygon_str_);
     for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
@@ -311,7 +315,7 @@ float ROSAutoCharge::getAccSpeed(float facc , float fdec , float bacc , float bd
 
 
 
-void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
+void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &scan)
 {
     // ROS_INFO("Scan Min Angle:%0.100f , Max Angle:%0.100f", scan_angle_min, scan_angle_max);
     static tf::StampedTransform laser_transform;
@@ -321,7 +325,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
     static unsigned int angle_division, scan_min_index, scan_max_index;
     static float scan_angle_min = 0, scan_angle_max = 0;
     static float laser_range_max = 20.0;
-    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan.angle_min || scan_angle_max != scan.angle_max) || scan_ready != 1)
+    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan->angle_min || scan_angle_max != scan->angle_max) || scan_ready != 1)
     {
         try
         {
@@ -340,20 +344,20 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
             return;
         }
 
-        // scan_angle_min = std::max(scan.angle_min, obstacle_angle_min_);
-        // scan_angle_max = std::min(scan.angle_max, obstacle_angle_max_);
-        // angle_division = (scan.angle_max - scan.angle_min) / scan.angle_increment;
-        // scan_min_index = scan_angle_min > scan.angle_min ? (scan_angle_min - scan.angle_min) / scan.angle_increment + 1 : 0;
-        // scan_max_index = scan_angle_max < scan.angle_max ? angle_division - (scan.angle_max - scan_angle_max) / scan.angle_increment + 1 : angle_division;
+        // scan_angle_min = std::max(scan->angle_min, obstacle_angle_min_);
+        // scan_angle_max = std::min(scan->angle_max, obstacle_angle_max_);
+        // angle_division = (scan->angle_max - scan->angle_min) / scan->angle_increment;
+        // scan_min_index = scan_angle_min > scan->angle_min ? (scan_angle_min - scan->angle_min) / scan->angle_increment + 1 : 0;
+        // scan_max_index = scan_angle_max < scan->angle_max ? angle_division - (scan->angle_max - scan_angle_max) / scan->angle_increment + 1 : angle_division;
         // ROS_INFO("Scan Min Angle:%0.4f , Max Angle:%0.4f", scan_angle_min * 180 / M_PI, scan_angle_max * 180 /M_PI);
         // ROS_INFO("Scan Division:%d Scan Min Index:%d , Max Index:%d", angle_division, scan_min_index, scan_max_index);
-        // ROS_INFO("Scan size:%ld Inc:%0.9f", scan.ranges.size(), scan.angle_increment);
+        // ROS_INFO("Scan size:%ld Inc:%0.9f", scan->ranges.size(), scan->angle_increment);
 
-        scan_angle_min = scan.angle_min;
-        scan_angle_max = scan.angle_max;
-        angle_division = (scan.angle_max - scan.angle_min) / scan.angle_increment;
+        scan_angle_min = scan->angle_min;
+        scan_angle_max = scan->angle_max;
+        angle_division = (scan->angle_max - scan->angle_min) / scan->angle_increment;
         ROS_INFO("Scan Min Angle:%0.4f , Max Angle:%0.4f , Division:%d , Scan size:%ld , Inc:%0.5f ", \
-                    scan_angle_min * 180 / M_PI, scan_angle_max * 180 /M_PI, angle_division, scan.ranges.size(), scan.angle_increment);
+                    scan_angle_min * 180 / M_PI, scan_angle_max * 180 /M_PI, angle_division, scan->ranges.size(), scan->angle_increment);
         
         polygon.clear();
         obstacle_thr.clear();
@@ -386,9 +390,9 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
         }
         cout << "\r\n" << endl;
 
-        for(int i = 0; i < scan.ranges.size(); ++i)
+        for(int i = 0; i < scan->ranges.size(); ++i)
         {
-            float angle_tmp = scan.angle_min + i * scan.angle_increment;
+            float angle_tmp = scan->angle_min + i * scan->angle_increment;
             Line l1 = {{0, 0}, {laser_range_max * cos(angle_tmp), laser_range_max * sin(angle_tmp)}};
             Line l2;
             Point crosspoint;
@@ -421,7 +425,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
                 }
             }
         }
-        ROS_INFO("laser size:%d , obstacle size:%d", scan.ranges.size(), obstacle_thr.size());
+        ROS_INFO("laser size:%d , obstacle size:%d", scan->ranges.size(), obstacle_thr.size());
         for(auto i = obstacle_thr.cbegin(); i != obstacle_thr.cend(); ++i)
         {
             printf("%0.5f\r\n", *i); 
@@ -435,7 +439,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
     int obstacle_cnt = 0;
     for(auto j = obstacle_thr.cbegin(); j != obstacle_thr.cend(); ++j)
     {
-        if(scan.ranges[obstacle_cnt] < *j)
+        if(scan->ranges[obstacle_cnt] < *j)
         {
             obstacle_temp |= 1;
         }
@@ -448,6 +452,8 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan &scan)
     {
         ROS_INFO("have obstacle!");
     }
+
+    reflector.DetectReflector(scan);
     last_scan_time = ros::Time::now();
 }
 

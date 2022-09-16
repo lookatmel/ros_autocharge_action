@@ -10,6 +10,7 @@
 #include <actionlib/server/simple_action_server.h>
 #include <ros_autocharge_action/action1Action.h>
 
+#include "reflector_detect/reflector_detect"
 
 
 #define VISUAL_ANGLE             ((float)(120 * M_PI / 180.0))      //no use
@@ -53,7 +54,7 @@ class ROSAutoCharge
         ~ROSAutoCharge();
 
         void executeCB(const ros_autocharge_action::action1GoalConstPtr &goal);
-        void LaserScanCallback(const sensor_msgs::LaserScan &scan);
+        void LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &scan);
         void loop();
         void start();
         void stop();
@@ -122,6 +123,7 @@ class ROSAutoCharge
         ros::NodeHandle nh;
         tf::TransformListener listener, laser_listener;
         AutoCharge_Server *as;
+        ReflectorDetect reflector;
 
         ros::Subscriber laser_scan_sub;
         ros::Publisher cmd_pub;

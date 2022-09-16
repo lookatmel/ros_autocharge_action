@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   actionlib_msgs
   actionlib
   serial
+  reflector_detect
 )
 
 ## System dependencies are found with CMake's conventions
@@ -111,9 +112,9 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include #./src/yaml-cpp/include
+  # INCLUDE_DIRS include #./src/yaml-cpp/include
 #  LIBRARIES ros_autocharge_actionros_autocharge_action
-  CATKIN_DEPENDS roscpp rospy std_msgs tf message_runtime
+  # CATKIN_DEPENDS roscpp rospy std_msgs tf message_runtime
 #  DEPENDS system_lib
 )
 
