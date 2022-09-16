@@ -135,7 +135,7 @@ class ROSAutoCharge
         ros::Duration period, motion_waittime, stable_waittime;
         ros::Duration scan_overtime, pannel_overtime, obstacle_overtime;
 
-        ros::Time search_time, last_scan_time, last_time, tf_now, tf_last, last_stable_time, cancel_time;
+        ros::Time search_time, last_scan_time, last_time, tf_now, tf_last, last_stable_time, cancel_time, last_reflector_time_;
 
         geometry_msgs::Twist cmd_vel;
 
@@ -149,11 +149,12 @@ class ROSAutoCharge
         bool wait_stable;
         bool moveback;
         bool scan_ready;
+        bool reflector_rev_;
 
         float target_speed, target_aspeed, target_angle;
         float facc, fdec, bacc, bdec;
 
-        float x, y, yaw, x_temp, y_temp, yaw_temp;
+        float x, y, z, yaw, x_temp, y_temp, yaw_temp;
         
 
         struct acc_data

@@ -6,14 +6,14 @@ using namespace std;
 
 
 ROSAutoCharge::ROSAutoCharge()
-    :as(NULL),reflector(0.15, 2.0, 400)
+    :as(NULL),reflector(0.17, 2.0, 300)
 {
     ros::NodeHandle nh_private("~");
-	nh_private.param<std::string>("laser_topic", laser_topic_, "/scan");
-	nh_private.param<std::string>("cmd_vel", cmd_vel_topic_, "/cmd_vel"); 
-	nh_private.param<std::string>("pannel_id", pannel_frame_id_, "/pannel"); 
-	nh_private.param<std::string>("base_id", base_frame_id_, "/base_link"); 
-    nh_private.param<std::string>("laser_id", laser_frame_id_, "/laser"); 
+	nh_private.param<std::string>("laser_topic", laser_topic_, "scan");
+	nh_private.param<std::string>("cmd_vel", cmd_vel_topic_, "cmd_vel"); 
+	nh_private.param<std::string>("pannel_id", pannel_frame_id_, "pannel"); 
+	nh_private.param<std::string>("base_id", base_frame_id_, "base_link"); 
+    nh_private.param<std::string>("laser_id", laser_frame_id_, "laser"); 
 
 
     nh_private.param<float>("visual_angle", visual_angle_, VISUAL_ANGLE); 
@@ -106,6 +106,7 @@ void ROSAutoCharge::start()
     x_temp = 0; y_temp = 0; yaw_temp = 0;
     state = 0; step = STEP_INIT; tf_rev = 0; have_obstacle_ = 0; wait_stable = 0, moveback = 0;
     scan_ready = 0;
+    reflector_rev_ = 0;
 
     laser_scan_sub = nh.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
     last_time = ros::Time::now();
@@ -453,7 +454,10 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &sc
         ROS_INFO("have obstacle!");
     }
 
-    reflector.DetectReflector(scan);
+    if(reflector.DetectReflector(scan))
+    {
+        last_reflector_time_ = ros::Time::now();
+    }
     last_scan_time = ros::Time::now();
 }
 
@@ -462,43 +466,57 @@ void ROSAutoCharge::loop()
 {
     ChargerUART::ChargeDataTypedef chargedata;
     bool chargedata_flag = false;
-    try
-    {
-        tf_now = ros::Time::now();
-        tf_rev = listener.waitForTransform(pannel_frame_id_, base_frame_id_, tf_now, ros::Duration(0.2));
-        listener.lookupTransform(pannel_frame_id_, base_frame_id_, tf_now, transform_);
-        if(tf_rev)
-        {
-            x_temp = transform_.getOrigin().x();
-            y_temp = transform_.getOrigin().y();
-            yaw_temp = tf::getYaw(transform_.getRotation());
-            if((fabs(x_temp - transform_.getOrigin().x()) > 0.1 || fabs(y_temp - transform_.getOrigin().y()) > 0.1) \
-                && !(x == 0 && y == 0 && yaw == 0))
-            {
-                // tf_last = tf_now;
-                tf_rev = 0;
-            }
-            else
-            {
-                tf_last = tf_now;
-                x = x_temp;
-                y = y_temp;
-                yaw = yaw_temp;
-            }
-            // ROS_INFO("X:%0.3f Y:%0.3f Angle:%0.3f", x, y, yaw * 180 / 3.14159);
-        }
-    }
-    catch(tf::TransformException &ex)
-    {
-        ROS_WARN("%s", ex.what());
-    }
+    tf::Quaternion quat;
+    // try
+    // {
+    //     tf_now = ros::Time::now();
+    //     tf_rev = listener.waitForTransform(pannel_frame_id_, base_frame_id_, tf_now, ros::Duration(0.2));
+    //     listener.lookupTransform(pannel_frame_id_, base_frame_id_, tf_now, transform_);
+    //     if(tf_rev)
+    //     {
+    //         x_temp = transform_.getOrigin().x();
+    //         y_temp = transform_.getOrigin().y();
+    //         yaw_temp = tf::getYaw(transform_.getRotation());
+    //         if((fabs(x_temp - transform_.getOrigin().x()) > 0.1 || fabs(y_temp - transform_.getOrigin().y()) > 0.1) \
+    //             && !(x == 0 && y == 0 && yaw == 0))
+    //         {
+    //             // tf_last = tf_now;
+    //             tf_rev = 0;
+    //         }
+    //         else
+    //         {
+    //             tf_last = tf_now;
+    //             x = x_temp;
+    //             y = y_temp;
+    //             yaw = yaw_temp;
+    //         }
+    //         // ROS_INFO("X:%0.3f Y:%0.3f Angle:%0.3f", x, y, yaw * 180 / 3.14159);
+    //     }
+    // }
+    // catch(tf::TransformException &ex)
+    // {
+    //     ROS_WARN("%s", ex.what());
+    // }
 
     chargedata_flag = uart_->getChargerData(chargedata);
-    
-    
-    // pannel_overtime = ros::Time::now() - tf_last;
     period = ros::Time::now() - last_time;
     // ROS_INFO("Period:%0.5f", period.toSec());
+    if(ros::Time::now() - last_reflector_time_ > ros::Duration(0.5))
+    {
+        reflector_rev_ = 0;
+    }
+    else
+    {
+        reflector_rev_ = 1;
+        x = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.x;
+        y = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.y;
+        z = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.z;
+        quat.setValue(reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.x, \
+                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.y,   \
+                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.z,   \
+                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.w);
+        yaw = -tf::getYaw(quat);
+    }
 
     switch(step)
     {
@@ -522,7 +540,7 @@ void ROSAutoCharge::loop()
                     ROS_INFO("Charge fail because of obstacle!");
                 }
             }
-            else if(tf_rev != 1)
+            else if(reflector_rev_ != 1)
             {
                 pannel_overtime += period;
                 if(pannel_overtime.toSec() > 2)
@@ -532,7 +550,7 @@ void ROSAutoCharge::loop()
                     ROS_INFO("Charge Searching!");
                 }
             }
-            else if(tf_rev == 1)
+            else if(reflector_rev_ == 1)
             {
                 StepChange(STEP_ROUND);
                 ROS_INFO("Charge Around!");
@@ -541,7 +559,7 @@ void ROSAutoCharge::loop()
             setASpeed(0);
             break;
         case STEP_SEARCH:
-            if(tf_rev)
+            if(reflector_rev_)
             {
                 setAllSpeedZeroWithAcc();
                 StepChange(STEP_ROUND);
@@ -572,7 +590,7 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if((tf_rev != 1))    //search pannel
+            if((reflector_rev_ != 1))    //search pannel
             {
                 pannel_overtime += period;
                 if(pannel_overtime.toSec() > 10)
@@ -670,7 +688,7 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if(tf_rev != 1)
+            if(reflector_rev_ != 1)
             {
                 pannel_overtime += period;
                 if(pannel_overtime.toSec() > 1)
@@ -719,7 +737,7 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if(tf_rev != 1)
+            if(reflector_rev_ != 1)
             {
                 setAllSpeedZeroWithAcc();
                 setWaitStable(2);
