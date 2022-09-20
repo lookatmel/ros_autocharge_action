@@ -37,6 +37,7 @@ int main(int argc, char **argv)
 
     ROSAutoCharge Charge;
     ros::spin();
+    // while(ros::ok());
 
 
     // ChargerUART uart("/dev/ttyUSB0", 115200);

@@ -1,10 +1,14 @@
 # Define the goal
 uint32 startmode
+float32 length
+float32 distance
 ---
 # Define the result
 uint32 result
 ---
 # Define a feedback message
-uint32 Step
-float32 Voltage
-float32 Current
+uint32 step
+float32 voltage
+float32 current
+uint32 reflector_intensity
+geometry_msgs/Pose poseonreflector

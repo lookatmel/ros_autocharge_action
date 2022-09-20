@@ -1,6 +1,6 @@
 <launch>
 
-    <node pkg="ros_autocharge_action" type="ros_autocharge_action" name="autocharge_node" output="screen" required="true">
+    <node pkg="ros_autocharge_action" type="ros_autocharge_node" name="ros_autocharge_node" output="screen" required="true">
         <param name="laser_topic" type="string" value="/scan" />
         <param name="cmd_vel" type="string" value="/cmd_vel" />
         <param name="pannel_id" type="string" value="pannel" />
@@ -15,7 +15,7 @@
         <param name="obstacle_distance" type="double" value="0.0" />
         <param name="obstacle_deadzone" type="double" value="0.8" />
         <param name="pretouch_distance" type="double" value="0.75" />
-        <param name="moveback_distance" type="double" value="0.5" />
+        <param name="moveback_distance" type="double" value="0.3" />
 
         <param name="uart_port" type="string" value="/dev/autocharge_usb" />
         <param name="uart_baudrate" type="int" value="115200" />

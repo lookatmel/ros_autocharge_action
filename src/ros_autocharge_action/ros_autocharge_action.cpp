@@ -6,7 +6,7 @@ using namespace std;
 
 
 ROSAutoCharge::ROSAutoCharge()
-    :as(NULL),reflector(0.17, 2.0, 300)
+    :as_(NULL),reflector_(0.17, 3.0, 250)
 {
     ros::NodeHandle nh_private("~");
 	nh_private.param<std::string>("laser_topic", laser_topic_, "scan");
@@ -29,9 +29,10 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<float>("moveback_distance", moveback_distance_, MOVEBACK_DISTANCE);
     nh_private.param<std::string>("movebase_polygon", movebase_polygon_str_, "[[0.29,-0.22],[0.29,0.22],[-0.29,0.22],[-0.29,-0.22]]"); 
 
-    reflector.SetBaseFrame(base_frame_id_);    
-    reflector.SetLaserFrame(laser_frame_id_); 
-    reflector.Debug_Info(true);
+    reflector_.SetBaseFrame(base_frame_id_);    
+    reflector_.SetLaserFrame(laser_frame_id_); 
+    reflector_.Debug_Info(true);
+    reflector_.SetFilterDepth(10, 2);
 
     YAML::Node node = YAML::Load(movebase_polygon_str_);
     for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
@@ -65,22 +66,22 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<std::string>("uart_port", UARTPort_, "/dev/autocharge_usb");
     nh_private.param<int>("uart_baudrate", UARTBaudrate_, 115200);  
 
-    cmd_pub = nh.advertise<geometry_msgs::Twist>(cmd_vel_topic_, 10);
+    cmd_pub_ = nh_.advertise<geometry_msgs::Twist>(cmd_vel_topic_, 10);
 
 
     uart_ = new ChargerUART(UARTPort_, UARTBaudrate_);
-    as = new AutoCharge_Server(nh, "AutoCharge_Server", boost::bind(&ROSAutoCharge::executeCB, this, _1), false);
-    as->start();
+    as_ = new AutoCharge_Server(nh_, "AutoCharge_Server", boost::bind(&ROSAutoCharge::executeCB, this, _1), false);
+    as_->start();
     ROS_INFO("Created!");
 }
 
 ROSAutoCharge::~ROSAutoCharge()
 {
-    laser_scan_sub.shutdown();
-    cmd_pub.shutdown();
-    if(as != NULL)
+    laser_scan_sub_.shutdown();
+    cmd_pub_.shutdown();
+    if(as_ != NULL)
     {
-        delete as;
+        delete as_;
     }
     if(uart_ != NULL)
     {
@@ -91,84 +92,90 @@ ROSAutoCharge::~ROSAutoCharge()
 
 void ROSAutoCharge::start()
 {
-    search_time.fromSec(0);
-    last_scan_time.fromSec(0);
-    last_time.fromSec(0);
+    search_time_.fromSec(0);
+    last_scan_time_.fromSec(0);
+    last_time_.fromSec(0);
 
-    pannel_overtime.fromSec(0);
-    obstacle_overtime.fromSec(0);
-    scan_overtime.fromSec(0);
-    motion_waittime.fromSec(0);
-    stable_waittime.fromSec(0);
-    scan_overtime.fromSec(0);
+    pannel_overtime_.fromSec(0);
+    obstacle_overtime_.fromSec(0);
+    scan_overtime_.fromSec(0);
+    motion_waittime_.fromSec(0);
+    stable_waittime_.fromSec(0);
+    scan_overtime_.fromSec(0);
+    last_charge_time_.fromSec(0);
+    charge_overtime_.fromSec(0);
 
-    x = 0; y = 0; yaw = 0;
-    x_temp = 0; y_temp = 0; yaw_temp = 0;
-    state = 0; step = STEP_INIT; tf_rev = 0; have_obstacle_ = 0; wait_stable = 0, moveback = 0;
-    scan_ready = 0;
+    x_ = 0; y_ = 0; yaw_ = 0;
+    x_temp_ = 0; y_temp_ = 0; yaw_temp_ = 0;
+    state_ = 0; step_ = STEP_INIT; tf_rev_ = 0; have_obstacle_ = 0; wait_stable_ = 0, moveback_ = 0;
+    scan_ready_ = 0;
     reflector_rev_ = 0;
+    reflector_ok_ = 0;
 
-    laser_scan_sub = nh.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
-    last_time = ros::Time::now();
+    laser_scan_sub_ = nh_.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
+    last_time_ = ros::Time::now();
 }
 
 void ROSAutoCharge::stop()
 {
     publishZeroSpeed();
-    step = STEP_CANCEL;
+    step_ = STEP_CANCEL;
 }
 
 
 
 void ROSAutoCharge::cancel()
 {
-    if((step == STEP_AIMING && fabs(x) < 0.5) || step == STEP_PRETOUCH || step == STEP_TOUCH)
+    if((step_ == STEP_AIMING && fabs(x_) < 0.5) || step_ == STEP_PRETOUCH || step_ == STEP_TOUCH || step_ == STEP_ARRIVE || step_ == STEP_ARRIVESPIN)
     {
-        cancel_time = ros::Time::now();
-        step = STEP_MOVEBACK;
+        cancel_time_ = ros::Time::now();
+        step_ = STEP_MOVEBACK;
     }
     else
     {
-        step = STEP_CANCEL;
+        step_ = STEP_CANCEL;
     }
 
 }
 
 void ROSAutoCharge::shutdown()
 {
-    laser_scan_sub.shutdown();
+    laser_scan_sub_.shutdown();
 }
 
 unsigned int ROSAutoCharge::getStep()
 {
-    return step;
+    return step_;
 }
 
 void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &goal)
 {
     ros_autocharge_action::action1GoalConstPtr newgoal = goal;
-    ROS_INFO("Got a Goal:%d", newgoal->startmode);
+    ROS_INFO("Got a Goal:%d Length:%0.2f Distance:%0.2f", newgoal->startmode, newgoal->length, newgoal->distance);
+    reflector_.SetReflectorLength(newgoal->length);
+    align_distance_ = newgoal->distance;
+    mode_ = newgoal->startmode;
     start();
     setLSpeedAccParam(0.1,0.2);
     setASpeedAccParam(3.14/8, 3.14/1);
     uart_->ensurePortState();
 
-    ros::Rate r(20);
+    ros::Rate r(50);
     while(1)
     {
         uart_->PortLoop();
-        if(!ros::ok() || !as->isActive())
+        if(!ros::ok() || !as_->isActive())
         {
             publishZeroSpeed();
             break;
         }
 
-        if(as->isPreemptRequested())
+        if(as_->isPreemptRequested())
         {
-            if(as->isNewGoalAvailable())
+            if(as_->isNewGoalAvailable())
             {
-                newgoal = as->acceptNewGoal();
-                if(newgoal->startmode == 2)
+                newgoal = as_->acceptNewGoal();
+                if(newgoal->startmode == 0)
                 {
                     stop();
                     ROS_INFO("Action Stop!");
@@ -188,22 +195,22 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
         }
 
         loop();
-        feedback.Step = getStep();
-        as->publishFeedback(feedback);
+        feedback_.step = getStep();
+        as_->publishFeedback(feedback_);
 
         switch(getStep())
         {
             case STEP_SUCCESS :
-                as->setSucceeded(result);
+                as_->setSucceeded(result_);
                 shutdown();
                 ROS_INFO("Action is Succeed!");
                 break;
             case STEP_CANCEL :
-                as->setPreempted(result);
+                as_->setPreempted(result_);
                 shutdown();
                 break;
             case STEP_ERROR :
-                as->setAborted(result);
+                as_->setAborted(result_);
                 shutdown();
                 ROS_INFO("Action is Failed!");
                 break;
@@ -326,13 +333,13 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &sc
     static unsigned int angle_division, scan_min_index, scan_max_index;
     static float scan_angle_min = 0, scan_angle_max = 0;
     static float laser_range_max = 20.0;
-    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan->angle_min || scan_angle_max != scan->angle_max) || scan_ready != 1)
+    if((scan_angle_min == 0 && scan_angle_max == 0) || (scan_angle_min != scan->angle_min || scan_angle_max != scan->angle_max) || scan_ready_ != 1)
     {
         try
         {
             auto laser_tf_now = ros::Time::now();
-            laser_listener.waitForTransform(base_frame_id_, laser_frame_id_, laser_tf_now, ros::Duration(0.2));
-            laser_listener.lookupTransform(base_frame_id_, laser_frame_id_, laser_tf_now, laser_transform);
+            laser_listener_.waitForTransform(base_frame_id_, laser_frame_id_, laser_tf_now, ros::Duration(0.2));
+            laser_listener_.lookupTransform(base_frame_id_, laser_frame_id_, laser_tf_now, laser_transform);
             laser_x = laser_transform.getOrigin().getX();
             laser_y = laser_transform.getOrigin().getY();
             laser_z = laser_transform.getOrigin().getZ();
@@ -427,13 +434,13 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &sc
             }
         }
         ROS_INFO("laser size:%d , obstacle size:%d", scan->ranges.size(), obstacle_thr.size());
-        for(auto i = obstacle_thr.cbegin(); i != obstacle_thr.cend(); ++i)
-        {
-            printf("%0.5f\r\n", *i); 
-        }
+        // for(auto i = obstacle_thr.cbegin(); i != obstacle_thr.cend(); ++i)
+        // {
+        //     printf("%0.5f\r\n", *i); 
+        // }
         
         
-        scan_ready = 1;
+        scan_ready_ = 1;
     }
 
     bool obstacle_temp = 0;
@@ -454,11 +461,16 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &sc
         ROS_INFO("have obstacle!");
     }
 
-    if(reflector.DetectReflector(scan))
+    if(reflector_.DetectReflector(scan))
     {
+        reflector_ok_ = true;
         last_reflector_time_ = ros::Time::now();
     }
-    last_scan_time = ros::Time::now();
+    else
+    {
+        reflector_ok_ = false;
+    }
+    last_scan_time_ = ros::Time::now();
 }
 
 
@@ -467,65 +479,82 @@ void ROSAutoCharge::loop()
     ChargerUART::ChargeDataTypedef chargedata;
     bool chargedata_flag = false;
     tf::Quaternion quat;
-    // try
-    // {
-    //     tf_now = ros::Time::now();
-    //     tf_rev = listener.waitForTransform(pannel_frame_id_, base_frame_id_, tf_now, ros::Duration(0.2));
-    //     listener.lookupTransform(pannel_frame_id_, base_frame_id_, tf_now, transform_);
-    //     if(tf_rev)
-    //     {
-    //         x_temp = transform_.getOrigin().x();
-    //         y_temp = transform_.getOrigin().y();
-    //         yaw_temp = tf::getYaw(transform_.getRotation());
-    //         if((fabs(x_temp - transform_.getOrigin().x()) > 0.1 || fabs(y_temp - transform_.getOrigin().y()) > 0.1) \
-    //             && !(x == 0 && y == 0 && yaw == 0))
-    //         {
-    //             // tf_last = tf_now;
-    //             tf_rev = 0;
-    //         }
-    //         else
-    //         {
-    //             tf_last = tf_now;
-    //             x = x_temp;
-    //             y = y_temp;
-    //             yaw = yaw_temp;
-    //         }
-    //         // ROS_INFO("X:%0.3f Y:%0.3f Angle:%0.3f", x, y, yaw * 180 / 3.14159);
-    //     }
-    // }
-    // catch(tf::TransformException &ex)
-    // {
-    //     ROS_WARN("%s", ex.what());
-    // }
 
-    chargedata_flag = uart_->getChargerData(chargedata);
-    period = ros::Time::now() - last_time;
-    // ROS_INFO("Period:%0.5f", period.toSec());
+    if(uart_->getChargerData(chargedata))
+    {
+        chargedata_flag = true;
+        last_charge_time_ = ros::Time::now();
+    }
+    if(ros::Time::now() - last_charge_time_ > ros::Duration(0.2)) chargedata_flag = false;
+
+    period_ = ros::Time::now() - last_time_;
+    // ROS_INFO("Period:%0.5f", period_.toSec());
     if(ros::Time::now() - last_reflector_time_ > ros::Duration(0.5))
     {
         reflector_rev_ = 0;
     }
-    else
+    else if(reflector_ok_)
     {
-        reflector_rev_ = 1;
-        x = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.x;
-        y = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.y;
-        z = reflector.GetReflectorOnReflector().cbegin()->pose.pose.position.z;
-        quat.setValue(reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.x, \
-                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.y,   \
-                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.z,   \
-                        reflector.GetReflectorOnReflector().cbegin()->pose.pose.orientation.w);
-        yaw = -tf::getYaw(quat);
+        // feedback_.poseonreflector = reflector_.GetReflectorOnReflector().cbegin()->pose.pose;
+        // feedback_.reflector_intensity = reflector_.GetReflectorOnReflector().cbegin()->intensity;
+        // quat.setValue(reflector_.GetReflectorOnReflector().cbegin()->pose.pose.orientation.x, \
+        //                 reflector_.GetReflectorOnReflector().cbegin()->pose.pose.orientation.y,   \
+        //                 reflector_.GetReflectorOnReflector().cbegin()->pose.pose.orientation.z,   \
+        //                 reflector_.GetReflectorOnReflector().cbegin()->pose.pose.orientation.w);
+
+        // if((fabs(x_temp_ - reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.x) > 0.5 \
+        //     || fabs(y_temp_ - reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.y) > 0.5) \
+        //     ) //&& !(x_ == 0 && y_ == 0 && yaw_ == 0)
+        // {
+        //     reflector_rev_ = 0;
+        // }
+        // else
+        // {
+        //     x_ = reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.x;
+        //     y_ = reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.y;
+        //     yaw_ = tf::getYaw(quat);
+        //     reflector_rev_ = 1;
+        // }
+
+        // x_temp_ = reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.x;
+        // y_temp_ = reflector_.GetReflectorOnReflector().cbegin()->pose.pose.position.y;
+        // yaw_temp_ = tf::getYaw(quat);
+
+        feedback_.poseonreflector = reflector_.GetNearestReflector().pose.pose;
+        feedback_.reflector_intensity = reflector_.GetNearestReflector().intensity;
+        quat.setValue(reflector_.GetNearestReflector().pose.pose.orientation.x, \
+                        reflector_.GetNearestReflector().pose.pose.orientation.y,   \
+                        reflector_.GetNearestReflector().pose.pose.orientation.z,   \
+                        reflector_.GetNearestReflector().pose.pose.orientation.w);
+
+        if((fabs(x_temp_ - reflector_.GetNearestReflector().pose.pose.position.x) > 0.5 \
+            || fabs(y_temp_ - reflector_.GetNearestReflector().pose.pose.position.y) > 0.5) \
+            ) //&& !(x_ == 0 && y_ == 0 && yaw_ == 0)
+        {
+            reflector_rev_ = 0;
+        }
+        else
+        {
+            x_ = reflector_.GetNearestReflector().pose.pose.position.x;
+            y_ = reflector_.GetNearestReflector().pose.pose.position.y;
+            yaw_ = tf::getYaw(quat);
+            reflector_rev_ = 1;
+        }
+
+        x_temp_ = reflector_.GetNearestReflector().pose.pose.position.x;
+        y_temp_ = reflector_.GetNearestReflector().pose.pose.position.y;
+        yaw_temp_ = tf::getYaw(quat);
+
     }
 
-    switch(step)
+    switch(step_)
     {
         double stime;
         case STEP_INIT:
-            if(!scan_ready)
+            if(!scan_ready_)
             {
-                scan_overtime += period;
-                if(scan_overtime.toSec() > 10)
+                scan_overtime_ += period_;
+                if(scan_overtime_.toSec() > 10)
                 {
                     StepChange(STEP_ERROR);
                     ROS_INFO("Fail to get Laserscan!");
@@ -533,8 +562,8 @@ void ROSAutoCharge::loop()
             }
             else if(have_obstacle_)
             {
-                obstacle_overtime += period;
-                if(obstacle_overtime.toSec() > 10)
+                obstacle_overtime_ += period_;
+                if(obstacle_overtime_.toSec() > 10)
                 {
                     StepChange(STEP_ERROR);
                     ROS_INFO("Charge fail because of obstacle!");
@@ -542,17 +571,32 @@ void ROSAutoCharge::loop()
             }
             else if(reflector_rev_ != 1)
             {
-                pannel_overtime += period;
-                if(pannel_overtime.toSec() > 2)
+                pannel_overtime_ += period_;
+                if(pannel_overtime_.toSec() > 5)
                 {
-                    StepChange(STEP_SEARCH);
-                    search_time = ros::Time::now();
-                    ROS_INFO("Charge Searching!");
+                    // StepChange(STEP_SEARCH);
+                    // search_time = ros::Time::now();
+                    // ROS_INFO("Charge Searching!");
+                    StepChange(STEP_ERROR);
+                    ROS_WARN("Reflector not exist!");
+                }
+            }
+            else if(chargedata_flag != true && mode_ == 1)
+            {
+                charge_overtime_ += period_;
+                if(charge_overtime_.toSec() > 5)
+                {
+                    // StepChange(STEP_SEARCH);
+                    // search_time = ros::Time::now();
+                    // ROS_INFO("Charge Searching!");
+                    StepChange(STEP_ERROR);
+                    ROS_WARN("charger moudle error!");
                 }
             }
             else if(reflector_rev_ == 1)
             {
                 StepChange(STEP_ROUND);
+                setWaitStable(2);
                 ROS_INFO("Charge Around!");
             }
             setLSpeed(0);
@@ -566,7 +610,7 @@ void ROSAutoCharge::loop()
                 ROS_INFO("Charge Around!");
                 break;
             }
-            stime = (ros::Time::now() - search_time).toSec();
+            stime = (ros::Time::now() - search_time_).toSec();
             if(stime > 40)
             {
                 setLSpeed(0);
@@ -592,19 +636,19 @@ void ROSAutoCharge::loop()
 
             if((reflector_rev_ != 1))    //search pannel
             {
-                pannel_overtime += period;
-                if(pannel_overtime.toSec() > 10)
+                pannel_overtime_ += period_;
+                if(pannel_overtime_.toSec() > 10)
                 {
                     StepChange(STEP_ERROR);
                     setLSpeedWithAcc(0);
                     setASpeedWithAcc(0);
-                    ROS_INFO("Charge Error!");
+                    ROS_INFO("Charge Error : reflector error!");
                     break;
                 }
-                else
+                else if(pannel_overtime_.toSec() > 2)
                 {
-                    round_angle_max_ = fabs(yaw) > 1.4 ? fabs(yaw) - 0.1745329 : 1.4 - 0.1745329;
-                    if(yaw > 0)
+                    round_angle_max_ = fabs(yaw_) > 1.4 ? fabs(yaw_) - 0.1745329 : 1.4 - 0.1745329;
+                    if(yaw_ > 0)
                     {
                         setLSpeedWithAcc(0);
                         setASpeedWithAcc(-0.1);
@@ -615,6 +659,10 @@ void ROSAutoCharge::loop()
                         setASpeedWithAcc(0.1);
                     }
                 }
+                else
+                {
+                    setAllSpeedZeroWithAcc();
+                }
                 break;
             }
 
@@ -624,47 +672,47 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            rpoint_distance = sqrt(pow(round_distance_ - fabs(x), 2) + pow(fabs(y), 2));
+            rpoint_distance = sqrt(pow(round_distance_ - fabs(x_), 2) + pow(fabs(y_), 2));
         
-            if(fabs(x) < round_min_distance_)  // too close
+            if(fabs(x_) < round_min_distance_)  // too close
             {
                 StepChange(STEP_ERROR);
                 setAllSpeedZeroWithAcc();
-                ROS_INFO("Charge Error!");
+                ROS_INFO("Charge Error : too close %0.4f!", x_);
                 break;
             }
-            else if((fabs(y) < 0.01) && x - (-round_distance_) > -0.1)  //next step  || rpoint_distance < 0.05
+            else if((fabs(y_) < 0.01) && x_ - (-round_distance_) > -0.05)  //next step  || rpoint_distance < 0.05
             {
                 setAllSpeedZeroWithAcc();
                 StepChange(STEP_SPIN);
                 setWaitStable(2);
-                pannel_overtime.fromSec(0);
+                pannel_overtime_.fromSec(0);
                 ROS_INFO("Charge SPIN!");
                 break;
             }
 
-            if(y > 0)
+            if(y_ > 0)
             {
-                target_angle = std::max(atan2((0 - y), (-round_distance_ - x)), -round_angle_max_);
+                target_angle_ = std::max(atan2((0 - y_), (-round_distance_ - x_)), -round_angle_max_);
             }
             else
             {
-                target_angle = std::min(atan2((0 - y), (-round_distance_ - x)), round_angle_max_);
+                target_angle_ = std::min(atan2((0 - y_), (-round_distance_ - x_)), round_angle_max_);
             }
 
-            ROS_INFO("Target Angle:%0.4f X:%0.4f Y: %0.4f Angle:%0.4f Limit:%0.4f", target_angle * 180 / M_PI, x, y, yaw * 180 / M_PI, round_angle_max_ * 180 / M_PI);
+            ROS_INFO("Target Angle:%0.4f X:%0.4f Y: %0.4f Angle:%0.4f Limit:%0.4f", target_angle_ * 180 / M_PI, x_, y_, yaw_ * 180 / M_PI, round_angle_max_ * 180 / M_PI);
 
-            target_aspeed = (target_angle - yaw) * 0.3;
-            setASpeedWithAcc(target_aspeed);
-            if(fabs(target_angle - yaw) > 0.17)
+            target_aspeed_ = (target_angle_ - yaw_) * 0.3;
+            setASpeedWithAcc(target_aspeed_);
+            if(fabs(target_angle_ - yaw_) > 0.17)
             {
-                setLSpeedWithAcc(0);
+                setLSpeedWithAcc(0.03);
             }
             else
             {
-                if(rpoint_distance < 0.3)
+                if(rpoint_distance < 0.5)
                 {
-                    setLSpeedWithAcc(0.03);
+                    setLSpeedWithAcc(0.05);
                 }
                 else
                 {
@@ -681,7 +729,7 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if((fabs(x) > obstacle_deadzone_) && have_obstacle_)
+            if((fabs(x_) > obstacle_deadzone_) && have_obstacle_)
             {
                 setAllSpeedZeroWithAcc();
                 ROS_INFO("Have Obstacle!");
@@ -690,46 +738,46 @@ void ROSAutoCharge::loop()
 
             if(reflector_rev_ != 1)
             {
-                pannel_overtime += period;
-                if(pannel_overtime.toSec() > 1)
+                pannel_overtime_ += period_;
+                if(pannel_overtime_.toSec() > 1)
                 {
-                    if(yaw > 0)
+                    if(yaw_ > 0)
                     {
                         setLSpeedWithAcc(0);
                         setASpeedWithAcc(-0.1);
                     }
-                    else if(yaw < 0)
+                    else if(yaw_ < 0)
                     {
                         setLSpeedWithAcc(0);
                         setASpeedWithAcc(0.1);
                     }
-                    ROS_INFO("TF ERROR!");
+                    ROS_INFO("Reflector ERROR!");
                 }
                 break;
             }
             else
             {
-                pannel_overtime.fromSec(0);
+                pannel_overtime_.fromSec(0);
             }
 
-            ROS_INFO("SPINNING X:%0.4f Y: %0.4f Angle:%0.4f", x, y, yaw * 180 / M_PI);
-            if(fabs(yaw) < (2 * M_PI / 180))
+            ROS_INFO("SPINNING X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
+            if(fabs(yaw_) < (2 * M_PI / 180))
             {
-                motion_waittime += period;
+                motion_waittime_ += period_;
                 setAllSpeedZeroWithAcc();
-                if(motion_waittime.toSec() > 2)
+                if(motion_waittime_.toSec() > 1)
                 {
                     StepChange(STEP_AIMING);
-                    motion_waittime.fromSec(0);
+                    motion_waittime_.fromSec(0);
                     ROS_INFO("Charge Aiming!");
                 }
                 break;
             }
             setLSpeedWithAcc(0);
-            setASpeedWithAcc(-yaw * 0.5);
+            setASpeedWithAcc(-yaw_ * 0.5);
             break;
         case STEP_AIMING:
-            if((fabs(x) > obstacle_deadzone_) && have_obstacle_)
+            if((fabs(x_) > obstacle_deadzone_) && have_obstacle_)
             {
                 setAllSpeedZeroWithAcc();
                 setWaitStable(2);
@@ -741,7 +789,7 @@ void ROSAutoCharge::loop()
             {
                 setAllSpeedZeroWithAcc();
                 setWaitStable(2);
-                ROS_INFO("TF ERROR!");
+                ROS_INFO("Reflector ERROR!");
                 break;
             }
 
@@ -751,62 +799,97 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if(fabs(x) <= pretouch_distance_ + 0.001)
+            if(fabs(x_) <= pretouch_distance_ + 0.001 && mode_ == 1)
             {
                 StepChange(STEP_PRETOUCH);
                 setAllSpeedZero();
-                ROS_INFO("Charge Reach! Distance:%0.4f", x);
+                ROS_INFO("Charge PRETOUCH! Distance:%0.4f", x_);
+                break;
+            }
+            else if(fabs(x_) <= align_distance_ + 0.5 && mode_ == 2)
+            {
+                StepChange(STEP_PRETOUCH);
+                setAllSpeedZero();
+                ROS_INFO("Align PREARRIVE! Distance:%0.4f", x_);
                 break;
             }
 
-            target_angle = -y * 3;
-            target_aspeed = (target_angle - yaw) * 0.2;
-            if(target_aspeed > 0.20) target_aspeed = 0.20;
-            else if(target_aspeed < -0.20) target_aspeed = -0.20;
-            setASpeedWithAcc(target_aspeed);
-            if(fabs(target_angle - yaw) > 0.17)
+            target_angle_ = -y_ * 3;
+            target_aspeed_ = (target_angle_ - yaw_) * 0.2;
+            if(target_aspeed_ > 0.30) target_aspeed_ = 0.30;
+            else if(target_aspeed_ < -0.30) target_aspeed_ = -0.30;
+            setASpeedWithAcc(target_aspeed_);
+            if(fabs(target_angle_ - yaw_) > 0.17)
             {
                 setLSpeedWithAcc(0);
             }
             else
             {
-                if(fabs(x) - pretouch_distance_ < 0.1)
+                if(fabs(x_) - pretouch_distance_ < 0.1)
                     setLSpeedWithAcc(0.04);
-                else if(fabs(x) - pretouch_distance_ < 0.05)
+                else if(fabs(x_) - pretouch_distance_ < 0.05)
                     setLSpeedWithAcc(0.02);
                 else
                     setLSpeedWithAcc(0.05);
             }
-            ROS_INFO("Target Distance X:%0.4f Y: %0.4f Angle:%0.4f", x, y, yaw * 180 / M_PI);
+            ROS_INFO("Target Distance X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
             break;
         case STEP_PRETOUCH:
-            // setAllSpeedZero();
-            // setASpeedWithAcc(-yaw * 0.8);
             setLSpeed(0.005);
-            target_angle = -y * 3;
-            target_aspeed = (target_angle - yaw) * 0.2;
-            if(target_aspeed > 0.20) target_aspeed = 0.20;
-            else if(target_aspeed < -0.20) target_aspeed = -0.20;
-            setASpeedWithAcc(target_aspeed);
+            target_angle_ = -y_ * 3;
+            // target_aspeed = (target_angle - yaw) * 0.2; //对准y
+            target_aspeed_ = (0 - yaw_) * 1;//对准yaw
+            if(target_aspeed_ > 0.30) target_aspeed_ = 0.30;
+            else if(target_aspeed_ < -0.30) target_aspeed_ = -0.30;
+            setASpeedWithAcc(target_aspeed_);
             if(chargedata_flag == true && chargedata.chargecheck == true)
             {
                 StepChange(STEP_TOUCH);
             }
-            ROS_INFO("Reach X:%0.4f Y: %0.4f Angle:%0.4f", x, y, yaw * 180 / M_PI);
+            ROS_INFO("PRETOUCH X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
             break;
         case STEP_TOUCH:
             setAllSpeedZero();
             uart_->setSwitchState(1);
-            ROS_INFO("Touch X:%0.4f Y: %0.4f Angle:%0.4f", x, y, yaw * 180 / M_PI);
+            ROS_INFO("Touch X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
             break;
         case STEP_MOVEBACK:
             setLSpeedWithAcc(-0.1);
             setASpeedWithAcc(0);
-            if(ros::Time::now() - cancel_time > ros::Duration(moveback_distance_ / fabs(-0.1)))
+            if(ros::Time::now() - cancel_time_ > ros::Duration(moveback_distance_ / fabs(-0.1)))
             {
                 setLSpeedWithAcc(0);
                 StepChange(STEP_CANCEL);
             }
+            break;
+        case STEP_PREARRIVE:
+            setLSpeed(0.005);
+            target_angle_ = -y_ * 3;
+            target_aspeed_ = (target_angle_ - yaw_) * 0.2; //对准y
+            if(target_aspeed_ > 0.20) target_aspeed_ = 0.20;
+            else if(target_aspeed_ < -0.20) target_aspeed_ = -0.20;
+            setASpeedWithAcc(target_aspeed_);
+            if(fabs(x_) <= align_distance_ + 0.01)
+            {
+                StepChange(STEP_ARRIVESPIN);
+            }
+            ROS_INFO("PREARRIVE X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
+            break;
+        case STEP_ARRIVESPIN:
+            setLSpeed(0);
+            target_aspeed_ = (0 - yaw_) * 1;//对准yaw
+            if(target_aspeed_ > 0.20) target_aspeed_ = 0.20;
+            else if(target_aspeed_ < -0.20) target_aspeed_ = -0.20;
+            setASpeedWithAcc(target_aspeed_);
+            if(fabs(yaw_) < (1 * M_PI / 180))
+            {
+                StepChange(STEP_ARRIVE);
+                setAllSpeedZero();
+            }
+            ROS_INFO("PREARRIVE X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
+            break;
+        case STEP_ARRIVE:
+            ROS_INFO("ARRIVE X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
             break;
         case STEP_CANCEL :
             setAllSpeedZero();
@@ -819,20 +902,20 @@ void ROSAutoCharge::loop()
 
     publishSpeed();
 
-    last_time = ros::Time::now();
+    last_time_ = ros::Time::now();
 }
 
 
 void ROSAutoCharge::setWaitStable(unsigned int sec)
 {
-    last_stable_time = ros::Time::now();
-    wait_stable = 1;
-    stable_waittime.fromSec(sec);
+    last_stable_time_ = ros::Time::now();
+    wait_stable_ = 1;
+    stable_waittime_.fromSec(sec);
 }
 
 bool ROSAutoCharge::isStable()
 {
-    if(ros::Time::now() > last_stable_time + stable_waittime)
+    if(ros::Time::now() > last_stable_time_ + stable_waittime_)
     {
         return 1;
     }
@@ -842,11 +925,11 @@ bool ROSAutoCharge::isStable()
 
 void ROSAutoCharge::StepChange(StepEnum nextstep)
 {
-    motion_waittime.fromSec(0);
-    obstacle_overtime.fromSec(0);
-    pannel_overtime.fromSec(0);
+    motion_waittime_.fromSec(0);
+    obstacle_overtime_.fromSec(0);
+    pannel_overtime_.fromSec(0);
 
-    step = nextstep;
+    step_ = nextstep;
 }
 
 

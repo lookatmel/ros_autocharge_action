@@ -79,6 +79,7 @@ add_action_files(
 generate_messages(
   DEPENDENCIES
   std_msgs
+  geometry_msgs
   actionlib_msgs
 )
 
@@ -221,9 +222,13 @@ include_directories(
 #include_directories(/usr/local/include/yaml-cpp)
 
 
-aux_source_directory(./src DIR_SRCS)
-add_executable(ros_autocharge_action ${DIR_SRCS})
-add_dependencies(ros_autocharge_action ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(ros_autocharge_action  ${catkin_LIBRARIES} yaml-cpp)
+aux_source_directory(./src/ros_autocharge_action DIR_SRCS)
+add_executable(ros_autocharge_node ${DIR_SRCS} src/ros_autocharge_node.cpp)
+add_dependencies(ros_autocharge_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(ros_autocharge_node  ${catkin_LIBRARIES} yaml-cpp)
+
+add_executable(autocharge_client src/autocharge_client.cpp)
+add_dependencies(autocharge_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(autocharge_client  ${catkin_LIBRARIES})
 
 #add_subdirectory(src/yaml-cpp)
