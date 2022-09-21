@@ -231,4 +231,8 @@ add_executable(autocharge_client src/autocharge_client.cpp)
 add_dependencies(autocharge_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(autocharge_client  ${catkin_LIBRARIES})
 
+add_executable(align_client src/align_client.cpp)
+add_dependencies(align_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(align_client  ${catkin_LIBRARIES})
+
 #add_subdirectory(src/yaml-cpp)

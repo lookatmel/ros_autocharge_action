@@ -18,7 +18,7 @@
 #define ROUND_MIN                ((float)0.7)                       //minimum distance of Center alignment
 #define ROUND_ANGLE_MAX          ((float)3.14)                      //max angle of Center alignment
 #define PANNEL_LENGTH            ((float)0.17)
-#define OBSTACLE_DISTANCE        ((float)0.1)
+#define OBSTACLE_DISTANCE        ((float)0.0)
 #define OBSTACLE_ANGLE_MIN       ((float)(-180 * M_PI / 180.0))      // start angle of obstacle detection
 #define OBSTACLE_ANGLE_MAX       ((float)(180 * M_PI / 180.0))       // end angle of obstacle detection
 #define OBSTACLE_DRADZONE        ((float)0.6)                       // ignore obstacle when pretouched the charger

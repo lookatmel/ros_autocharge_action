@@ -33,6 +33,7 @@ ROSAutoCharge::ROSAutoCharge()
     reflector_.SetLaserFrame(laser_frame_id_); 
     reflector_.Debug_Info(true);
     reflector_.SetFilterDepth(10, 2);
+    reflector_.TFPublish(true);
 
     YAML::Node node = YAML::Load(movebase_polygon_str_);
     for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
@@ -527,8 +528,8 @@ void ROSAutoCharge::loop()
                         reflector_.GetNearestReflector().pose.pose.orientation.z,   \
                         reflector_.GetNearestReflector().pose.pose.orientation.w);
 
-        if((fabs(x_temp_ - reflector_.GetNearestReflector().pose.pose.position.x) > 0.5 \
-            || fabs(y_temp_ - reflector_.GetNearestReflector().pose.pose.position.y) > 0.5) \
+        if((fabs(x_temp_ - reflector_.GetNearestReflector().pose.pose.position.x) > 0.2 \
+            || fabs(y_temp_ - reflector_.GetNearestReflector().pose.pose.position.y) > 0.2) \
             ) //&& !(x_ == 0 && y_ == 0 && yaw_ == 0)
         {
             reflector_rev_ = 0;
@@ -806,9 +807,9 @@ void ROSAutoCharge::loop()
                 ROS_INFO("Charge PRETOUCH! Distance:%0.4f", x_);
                 break;
             }
-            else if(fabs(x_) <= align_distance_ + 0.5 && mode_ == 2)
+            else if(fabs(x_) <= align_distance_ + 0.1 && mode_ == 2)
             {
-                StepChange(STEP_PRETOUCH);
+                StepChange(STEP_PREARRIVE);
                 setAllSpeedZero();
                 ROS_INFO("Align PREARRIVE! Distance:%0.4f", x_);
                 break;
