@@ -6,7 +6,7 @@ using namespace std;
 
 
 ROSAutoCharge::ROSAutoCharge()
-    :as_(NULL),reflector_(0.17, 3.0, 250)
+    :as_(NULL),reflector_(0.17, 3.0, 300)
 {
     ros::NodeHandle nh_private("~");
 	nh_private.param<std::string>("laser_topic", laser_topic_, "scan");
