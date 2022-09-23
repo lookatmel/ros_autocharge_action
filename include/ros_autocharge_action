@@ -155,6 +155,8 @@ class ROSAutoCharge
         bool reflector_rev_;
         bool reflector_ok_;
         uint32_t mode_;
+        geometry_msgs::Pose2D target_pose_;
+        double spin_angle_;
 
         float target_speed_, target_aspeed_, target_angle_;
         float facc_, fdec_, bacc_, bdec_;
