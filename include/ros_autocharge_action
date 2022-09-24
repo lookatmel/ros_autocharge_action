@@ -13,7 +13,7 @@
 #include "reflector_detect/reflector_detect"
 
 
-#define VISUAL_ANGLE             ((float)(120 * M_PI / 180.0))      //no use
+#define VISUAL_ANGLE             ((float)(150 * M_PI / 180.0))      //no use
 #define ROUND_DISTANCE           ((float)1.5)                       //distance of Center alignment
 #define ROUND_MIN                ((float)0.7)                       //minimum distance of Center alignment
 #define ROUND_ANGLE_MAX          ((float)3.14)                      //max angle of Center alignment
@@ -38,6 +38,7 @@ class ROSAutoCharge
         enum StepEnum
         {
             STEP_INIT,
+            STEP_FEEDBACK,
             STEP_SEARCH,
             STEP_ROUND,
             STEP_SPIN,
@@ -157,10 +158,11 @@ class ROSAutoCharge
         uint32_t mode_;
         geometry_msgs::Pose2D target_pose_;
         double spin_angle_;
+        double round_target_x_;
+        double round_x_min_;
 
         float target_speed_, target_aspeed_, target_angle_;
         float facc_, fdec_, bacc_, bdec_;
-
         float x_, y_, z_, yaw_, x_temp_, y_temp_, yaw_temp_;
         
 
@@ -181,7 +183,7 @@ class ROSAutoCharge
         float moveback_distance_;
         float visual_angle_;
         float round_distance_;
-        float round_min_distance_;
+        float round_distance_min_;
         float round_angle_max_;
         float pannel_length_;
         float obstacle_distance_;
@@ -190,6 +192,7 @@ class ROSAutoCharge
         float obstacle_deadzone_;
         float pretouch_distance_;
         float align_distance_;
+        float align_aim_distance_min_;
 
         void StepChange(StepEnum nextstep);
         float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);

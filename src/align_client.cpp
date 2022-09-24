@@ -75,9 +75,9 @@ int main(int argc, char **argv)
     
     goal.startmode = 2;
     goal.length = 0.15;
-    goal.pose.x = 0.8;
-    goal.pose.y = -0.2;
-    goal.pose.theta = 10.0;
+    goal.pose.x = 1.0;
+    goal.pose.y = -0.1;
+    goal.pose.theta = 0.175 * 1;
     ac.sendGoal(goal, doneCallback, activeCallback, feedbackCallback);
     
 

@@ -16,11 +16,12 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<std::string>("laser_id", laser_frame_id_, "laser"); 
 
     //align param
-    nh_private.param<float>("visual_angle", visual_angle_, VISUAL_ANGLE); 
+    nh_private.param<float>("visual_angle", visual_angle_, VISUAL_ANGLE); //not use
     nh_private.param<float>("round_distance", round_distance_, ROUND_DISTANCE); 
-    nh_private.param<float>("round_min_distance", round_min_distance_, ROUND_MIN); 
+    nh_private.param<float>("round_distance_min", round_distance_min_, ROUND_MIN); 
     nh_private.param<float>("round_angle_max", round_angle_max_, ROUND_ANGLE_MAX); 
     nh_private.param<float>("pannel_length", pannel_length_, PANNEL_LENGTH); 
+    nh_private.param<float>("align_aim_distance_min", align_aim_distance_min_, 1.0); 
 
     //obstacle param
     nh_private.param<float>("obstacle_distance", obstacle_distance_, OBSTACLE_DISTANCE); 
@@ -29,15 +30,25 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<float>("obstacle_deadzone", obstacle_deadzone_, OBSTACLE_DRADZONE); 
     nh_private.param<std::string>("movebase_polygon", movebase_polygon_str_, "[[0.29,-0.22],[0.29,0.22],[-0.29,0.22],[-0.29,-0.22]]"); 
 
+    //autocharge param
     nh_private.param<float>("pretouch_distance", pretouch_distance_, PRETOUCH_DISTANCE); 
     nh_private.param<float>("moveback_distance", moveback_distance_, MOVEBACK_DISTANCE);
     
-
+    int reflector_intensity;
+    float max_distance;
+    bool tf_pub, debug_info;
+    nh_private.param<int>("reflector_intensity", reflector_intensity, 300);
+    nh_private.param<float>("reflector_distance_max", max_distance, 4.0);
+    nh_private.param<bool>("tf_pub", tf_pub, true);
+    nh_private.param<bool>("debug_info", debug_info, false);
+    
     reflector_.SetBaseFrame(base_frame_id_);
     reflector_.SetLaserFrame(laser_frame_id_);
-    reflector_.Debug_Info(true);
-    reflector_.SetFilterDepth(10, 2);
-    reflector_.TFPublish(true);
+    reflector_.SetMinIntensity(reflector_intensity);
+    reflector_.SetDetectMaxDistance(max_distance);
+    reflector_.Debug_Info(debug_info);
+    reflector_.SetFilterDepth(5, 1);
+    reflector_.TFPublish(tf_pub);
 
     YAML::Node node = YAML::Load(movebase_polygon_str_);
     for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
@@ -158,7 +169,7 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     ros_autocharge_action::action1GoalConstPtr newgoal = goal;
     ROS_INFO("Got a Goal:%d Length:%0.2f x:%0.4f y:%0.4f angle:%0.2f", \
             newgoal->startmode, newgoal->length, newgoal->pose.x, newgoal->pose.y, newgoal->pose.theta);
-    if(newgoal->startmode > 2)
+    if(newgoal->startmode > 3 || newgoal->startmode == 0)
     {
         ROS_ERROR("Invaild Mode!");
         as_->setAborted(result_);
@@ -170,14 +181,32 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
         as_->setAborted(result_);
         return;
     }
-    reflector_.SetReflectorLength(newgoal->length);
-    target_pose_ = newgoal->pose;
-    align_distance_ = newgoal->pose.x;
-    mode_ = newgoal->startmode;
+    if(newgoal->pose.x > align_aim_distance_min_)
+    {
+        ROS_ERROR("Align Target too close!");
+        as_->setAborted(result_);
+        return;
+    }
+
     start();
     setLSpeedAccParam(0.1,0.2);
     setASpeedAccParam(3.14/8, 3.14/1);
     uart_->ensurePortState();
+
+    mode_ = newgoal->startmode;
+    align_distance_ = newgoal->pose.x;
+    target_pose_ = newgoal->pose;
+    reflector_.SetReflectorLength(newgoal->length);
+    if(mode_ == 1)
+    {
+        round_target_x_ = fabs(pretouch_distance_) + fabs(round_distance_);
+        round_x_min_ = fabs(pretouch_distance_) + fabs(round_distance_min_);
+    }
+    else
+    {
+        round_target_x_ = fabs(target_pose_.x) + fabs(round_distance_);
+        round_x_min_ = fabs(target_pose_.x) + fabs(round_distance_min_);
+    } 
 
     ros::Rate r(50);
     while(1)
@@ -563,14 +592,17 @@ void ROSAutoCharge::loop()
         x_temp_ = reflector_.GetNearestReflector().pose.pose.position.x;
         y_temp_ = reflector_.GetNearestReflector().pose.pose.position.y;
         yaw_temp_ = tf::getYaw(quat);
-
     }
 
     switch(step_)
     {
         double stime;
         case STEP_INIT:
-            if(!scan_ready_)
+            if(mode_ == 3)
+            {
+                StepChange(STEP_FEEDBACK);
+            }
+            else if(!scan_ready_)
             {
                 scan_overtime_ += period_;
                 if(scan_overtime_.toSec() > 10)
@@ -618,6 +650,8 @@ void ROSAutoCharge::loop()
             setLSpeed(0);
             setASpeed(0);
             break;
+        case STEP_FEEDBACK:
+            setAllSpeedZero();
         case STEP_SEARCH:
             if(reflector_rev_)
             {
@@ -688,16 +722,16 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            rpoint_distance = sqrt(pow(round_distance_ - fabs(target_pose_.x - x_), 2) + pow(fabs(target_pose_.y - y_), 2));
+            rpoint_distance = sqrt(pow(round_target_x_ - fabs(target_pose_.x - x_), 2) + pow(fabs(target_pose_.y - y_), 2));
         
-            if(fabs(x_) < round_min_distance_)  // too close
+            if(fabs(x_) < round_x_min_)  // too close
             {
                 StepChange(STEP_ERROR);
                 setAllSpeedZeroWithAcc();
                 ROS_INFO("Charge Error : too close %0.4f!", x_);
                 break;
             }
-            else if((fabs(target_pose_.y - y_) < 0.01) && x_ - (-round_distance_) > -0.05)  //next step  || rpoint_distance < 0.05
+            else if((fabs(target_pose_.y - y_) < 0.01) && x_ - (-round_target_x_) > -0.05)  //next step  || rpoint_distance < 0.05
             {
                 setAllSpeedZeroWithAcc();
                 spin_angle_ = atan2(0 - y_, 0 - x_);
@@ -709,11 +743,11 @@ void ROSAutoCharge::loop()
 
             if(target_pose_.y - y_ > 0)
             {
-                target_angle_ = std::max(atan2((double)(target_pose_.y - y_), (double)(-round_distance_ - x_)), -(double)round_angle_max_);
+                target_angle_ = std::max(atan2((double)(target_pose_.y - y_), (double)(-round_target_x_ - x_)), -(double)round_angle_max_);
             }
             else
             {
-                target_angle_ = std::min(atan2((double)(target_pose_.y - y_), (double)(-round_distance_ - x_)), (double)round_angle_max_);
+                target_angle_ = std::min(atan2((double)(target_pose_.y - y_), (double)(-round_target_x_ - x_)), (double)round_angle_max_);
             }
 
             ROS_INFO("Target Angle:%0.4f X:%0.4f Y: %0.4f Angle:%0.4f Limit:%0.4f", target_angle_ * 180 / M_PI, x_, y_, yaw_ * 180 / M_PI, round_angle_max_ * 180 / M_PI);
@@ -814,14 +848,14 @@ void ROSAutoCharge::loop()
                 break;
             }
 
-            if(fabs(x_) <= pretouch_distance_ + 0.001 && mode_ == 1)
+            if(fabs(x_) <= pretouch_distance_ + 0.01 && mode_ == 1)
             {
                 StepChange(STEP_PRETOUCH);
                 setAllSpeedZero();
                 ROS_INFO("Charge PRETOUCH! Distance:%0.4f", x_);
                 break;
             }
-            else if(fabs(x_) <= align_distance_ + 0.1 && mode_ == 2)
+            else if(fabs(x_) <= align_distance_ + 0.01 && mode_ == 2)
             {
                 StepChange(STEP_PREARRIVE);
                 setAllSpeedZero();
@@ -830,7 +864,7 @@ void ROSAutoCharge::loop()
             }
 
             target_angle_ = (target_pose_.y - y_) * 3;
-            target_aspeed_ = (target_angle_ - yaw_) * 0.2;
+            target_aspeed_ = (target_angle_ - yaw_) * 0.3;
             if(target_aspeed_ > 0.30) target_aspeed_ = 0.30;
             else if(target_aspeed_ < -0.30) target_aspeed_ = -0.30;
             setASpeedWithAcc(target_aspeed_);
@@ -896,7 +930,7 @@ void ROSAutoCharge::loop()
             if(target_aspeed_ > 0.20) target_aspeed_ = 0.20;
             else if(target_aspeed_ < -0.20) target_aspeed_ = -0.20;
             setASpeedWithAcc(target_aspeed_);
-            if(fabs(yaw_) < (1 * M_PI / 180))
+            if(fabs(target_pose_.theta - yaw_) < (1 * M_PI / 180))
             {
                 StepChange(STEP_ARRIVE);
                 setAllSpeedZero();
