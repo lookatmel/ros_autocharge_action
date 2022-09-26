@@ -1,6 +1,6 @@
 <launch>
 
-    <node pkg="ros_autocharge_action" type="ros_autocharge_node" name="ros_autocharge_node" output="screen" required="true">
+    <node pkg="ros_autocharge_action" type="ros_autocharge_node" name="ros_autocharge_node" output="screen" required="true" >
         <param name="laser_topic" type="string" value="/scan" />
         <param name="cmd_vel" type="string" value="/cmd_vel" />
         <param name="pannel_id" type="string" value="pannel" />
@@ -8,16 +8,20 @@
         <param name="laser_id" type="string" value="laser" />
         <!-- common param -->
         <param name="l_speed_max" type="double" value="0.5" />
-        <param name="a_speed_max" type="double" value="0.3" />
-        <param name="round_distance" type="double" value="1.5" /> 
-        <param name="round_distance_min" type="double" value="1.0" />
-        <param name="round_angle_limit" type="double" value="1.0" />
+        <param name="a_speed_max" type="double" value="0.2" />
+        <param name="round_distance" type="double" value="1.0" /> 
+        <param name="round_distance_min" type="double" value="0.5" />
+        <param name="round_angle_limit" type="double" value="1.4" />
         <param name="moveback_distance" type="double" value="0.3" />
 
         <param name="reflector_intensity" type="int" value="250" />
-        <param name="reflector_distance_max" type="float" value="4.0" />
+        <param name="reflector_distance_max" type="double" value="4.0" />
         <param name="tf_pub" type="bool" value="true" />
         <param name="debug_info" type="bool" value="true" />
+
+        <param name="angle_p" type="double" value="3.0" />
+        <param name="a_speed_p" type="double" value="0.5" />
+        <param name="pre_arrive_lspeed" type="double" value="0.01" />
         <!-- align param -->
         <param name="target_distance_min" type="double" value="0.8" />
         <!-- obstacle param -->
@@ -26,7 +30,7 @@
         <param name="movebase_polygon" type="string" value="[[0.66,-0.41],[0.66,0.41],[-0.66,0.41],[-0.66,-0.41]]" />
 	    <!-- <param name="movebase_polygon" type="string" value="[[0.46,-0.31],[0.46,0.31],[-0.46,0.31],[-0.46,-0.31]]" /> -->
         <!-- autocharge param -->
-        <param name="pretouch_distance" type="double" value="0.75" />
+        <param name="pretouch_distance" type="double" value="0.73" />
         <param name="pretouch_timeout" type="double" value="5.0" />
 
         <param name="uart_port" type="string" value="/dev/autocharge_usb" />

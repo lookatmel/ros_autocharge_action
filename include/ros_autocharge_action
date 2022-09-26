@@ -14,8 +14,8 @@
 
 
 #define VISUAL_ANGLE             ((float)(150 * M_PI / 180.0))      //no use
-#define ROUND_DISTANCE           ((float)1.5)                       //distance of Center alignment
-#define ROUND_MIN                ((float)0.7)                       //minimum distance of Center alignment
+#define ROUND_DISTANCE           ((float)1.0)                       //distance of Center alignment
+#define ROUND_MIN                ((float)0.5)                       //minimum distance of Center alignment
 #define ROUND_ANGLE_MAX          ((float)3.14)                      //max angle of Center alignment
 #define PANNEL_LENGTH            ((float)0.17)
 #define OBSTACLE_DISTANCE        ((float)0.0)
@@ -86,16 +86,32 @@ class ROSAutoCharge
             LSpeed_.bdec = dec;
         }
         void setLSpeedWithAcc(float speed){
-            LSpeed_.setspeed = getAccSpeed(LSpeed_.facc, LSpeed_.fdec, LSpeed_.bacc, LSpeed_.bdec, speed, LSpeed_.setspeed, LSpeed_.setspeed, period_.toSec());
+            float target;
+            if(speed > fabs(lspeed_max_)) target = lspeed_max_;
+            else if(speed <  -fabs(lspeed_max_)) target = -lspeed_max_;
+            else target = speed;
+            LSpeed_.setspeed = getAccSpeed(LSpeed_.facc, LSpeed_.fdec, LSpeed_.bacc, LSpeed_.bdec, target, LSpeed_.setspeed, LSpeed_.setspeed, period_.toSec());
         }
         void setASpeedWithAcc(float speed){
-            ASpeed_.setspeed = getAccSpeed(ASpeed_.facc, ASpeed_.fdec, ASpeed_.bacc, ASpeed_.bdec, speed, ASpeed_.setspeed, ASpeed_.setspeed, period_.toSec());
+            float target;
+            if(speed > fabs(aspeed_max_)) target = aspeed_max_;
+            else if(speed <  -fabs(aspeed_max_)) target = -aspeed_max_;
+            else target = speed;
+            ASpeed_.setspeed = getAccSpeed(ASpeed_.facc, ASpeed_.fdec, ASpeed_.bacc, ASpeed_.bdec, target, ASpeed_.setspeed, ASpeed_.setspeed, period_.toSec());
         }
         void setLSpeed(float speed){
-            LSpeed_.setspeed = speed;
+            float target;
+            if(speed > fabs(lspeed_max_)) target = lspeed_max_;
+            else if(speed <  -fabs(lspeed_max_)) target = -lspeed_max_;
+            else target = speed;
+            LSpeed_.setspeed = target;
         }
         void setASpeed(float speed){
-            ASpeed_.setspeed = speed;
+            float target;
+            if(speed > fabs(aspeed_max_)) target = aspeed_max_;
+            else if(speed <  -fabs(aspeed_max_)) target = -aspeed_max_;
+            else target = speed;
+            ASpeed_.setspeed = target;
         }
 
         void setAllSpeedZero(){
@@ -160,10 +176,13 @@ class ROSAutoCharge
         double spin_angle_;
         double round_target_x_;
         double round_x_min_;
+        double round_angle_max_;
 
         float target_speed_, target_aspeed_, target_angle_;
         float facc_, fdec_, bacc_, bdec_;
         float x_, y_, z_, yaw_, x_temp_, y_temp_, yaw_temp_;
+        float lspeed_max_, aspeed_max_;
+        float angle_p_, aspeed_p_;
         
 
         struct acc_data
@@ -184,15 +203,17 @@ class ROSAutoCharge
         float visual_angle_;
         float round_distance_;
         float round_distance_min_;
-        float round_angle_max_;
+        float round_angle_limit_;
         float pannel_length_;
         float obstacle_distance_;
         float obstacle_angle_min_;
         float obstacle_angle_max_;
         float obstacle_deadzone_;
         float pretouch_distance_;
+        float pretouch_timeout_;
         float align_distance_;
         float align_aim_distance_min_;
+        float prearrive_lspeed_;
 
         void StepChange(StepEnum nextstep);
         float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);

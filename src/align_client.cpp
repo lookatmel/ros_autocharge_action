@@ -59,11 +59,19 @@ int main(int argc, char **argv)
 {
     ros::init(argc,argv,"action_test_client",ros::init_options::NoSigintHandler); 
     ros::NodeHandle nh;
+    ros::NodeHandle nh_private("~");
     Client ac("AutoCharge_Server", true);
     ac_ = &ac;
     ros::Duration t(10);
     ros::Rate r(1);
     signal(SIGINT, mySigIntHandler);
+
+    goal.startmode = 2;
+    nh_private.param<float>("length", goal.length, 0.15);
+    nh_private.param<double>("x", goal.pose.x, 1.0);
+    nh_private.param<double>("y", goal.pose.y, -0.1);
+    nh_private.param<double>("angle", goal.pose.theta, 0.175);
+
 
     // ac.waitForServer();
     while(!ac.isServerConnected() && ros::ok())
@@ -73,11 +81,7 @@ int main(int argc, char **argv)
     }
 
     
-    goal.startmode = 2;
-    goal.length = 0.15;
-    goal.pose.x = 1.0;
-    goal.pose.y = -0.1;
-    goal.pose.theta = 0.175 * 1;
+
     ac.sendGoal(goal, doneCallback, activeCallback, feedbackCallback);
     
 
