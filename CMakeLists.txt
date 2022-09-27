@@ -235,4 +235,8 @@ add_executable(align_client src/align_client.cpp)
 add_dependencies(align_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(align_client  ${catkin_LIBRARIES})
 
+add_executable(feedback_client src/feedback_client.cpp)
+add_dependencies(feedback_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(feedback_client  ${catkin_LIBRARIES})
+
 #add_subdirectory(src/yaml-cpp)

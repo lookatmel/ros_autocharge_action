@@ -39,11 +39,6 @@ void feedbackCallback(const ros_autocharge_action::action1FeedbackConstPtr &feed
     tf2::convert(feedback->poseonreflector.orientation, quat);
     ROS_INFO("Feedback:%d x:%0.4f y:%0.4f angle:%0.4f int:%d", feedback->step, \
             feedback->poseonreflector.position.x, feedback->poseonreflector.position.y, tf2::getYaw(quat), feedback->reflector_intensity);
-    if(feedback->step == ROSAutoCharge::STEP_ARRIVE && !isDone)
-    {
-        donetime = ros::Time::now();
-        isDone = true;
-    }
     // if(feedback->Step == 5 || feedback->Step == 6)
     // {
     //     goal.startmode = 2;
@@ -57,16 +52,8 @@ void mySigIntHandler(int sig)
 {
     ROS_INFO("close ros_autocharge!\r\n");
     // ac_->cancelAllGoals();
-    if(isDone && ((ros::Time::now() - donetime).toSec() > 10))
-    {
-        ROS_INFO("moveback");
-        goal.startmode = 0;
-        ac_->sendGoal(goal, doneCallback, activeCallback, feedbackCallback);
-    }
-    else
-    {
-        ac_->cancelAllGoals();
-    }
+
+    ac_->cancelAllGoals();
     ros::shutdown();
     // exit(0);
 }
@@ -83,9 +70,9 @@ int main(int argc, char **argv)
     ros::Rate r(1);
     signal(SIGINT, mySigIntHandler);
 
-    goal.startmode = 2;
+    goal.startmode = ROSAutoCharge::MODE_FEEDBACK;
     nh_private.param<float>("length", goal.length, 0.15);
-    nh_private.param<double>("x", goal.pose.x, -1.0);
+    nh_private.param<double>("x", goal.pose.x, 1.0);
     nh_private.param<double>("y", goal.pose.y, -0.1);
     nh_private.param<double>("angle", goal.pose.theta, 0.175);
 

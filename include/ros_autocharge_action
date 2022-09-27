@@ -32,8 +32,6 @@ typedef actionlib::SimpleActionServer<ros_autocharge_action::action1Action> Auto
 class ROSAutoCharge
 {
     protected:
-
-
     public:
         enum StepEnum
         {
@@ -54,17 +52,107 @@ class ROSAutoCharge
             STEP_RECOVERY = 0xFE,
             STEP_ERROR = 0xFF
         };
+        enum ModeEnum
+        {
+            MODE_CANCEL = 0,
+            MODE_AUTOCHARGE = 1,
+            MODE_ALIGN = 2,
+            MODE_FEEDBACK = 3,
+            MODE_END
+        };
         ROSAutoCharge();
         ~ROSAutoCharge();
 
         void executeCB(const ros_autocharge_action::action1GoalConstPtr &goal);
         void LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &scan);
+
+    private:
+        ros::NodeHandle nh_;
+        tf::TransformListener listener_, laser_listener_;
+        AutoCharge_Server *as_;
+        ReflectorDetect reflector_;
+
+        ros::Subscriber laser_scan_sub_;
+        ros::Publisher cmd_pub_;
+
+        std::string laser_topic_, cmd_vel_topic_, pannel_frame_id_, base_frame_id_, laser_frame_id_;
+
+        tf::StampedTransform transform_;
+
+        ros::Duration period_, motion_waittime_, stable_waittime_;
+        ros::Duration scan_overtime_, pannel_overtime_, obstacle_overtime_, charge_overtime_;
+
+        ros::Time search_time_, last_scan_time_, last_time_, tf_now_, tf_last_, last_stable_time_, cancel_time_, last_reflector_time_, last_charge_time_;
+
+        geometry_msgs::Twist cmd_vel_;
+
+        ros_autocharge_action::action1Feedback feedback_;
+        ros_autocharge_action::action1Result result_;
+
+        int state_;
+        unsigned int step_;
+        bool have_obstacle_;
+        bool wait_stable_;
+        bool moveback_;
+        bool scan_ready_;
+        bool reflector_rev_;
+        bool reflector_ok_;
+        uint32_t mode_;
+        geometry_msgs::Pose2D target_pose_;
+        double spin_angle_;
+        double round_target_x_;
+        double round_x_min_;
+        double round_angle_max_;
+
+        float target_speed_, target_aspeed_, target_angle_;
+        float facc_, fdec_, bacc_, bdec_;
+        float x_, y_, z_, yaw_, x_temp_, y_temp_, yaw_temp_;
+        float lspeed_max_, aspeed_max_;
+
+        struct acc_data
+        {
+            float facc, fdec, bacc, bdec;
+            float targetspeed, setspeed;
+        }LSpeed_, ASpeed_;
+        
+        std::string UARTPort_;
+        int UARTBaudrate_;
+
+        class ChargerUART *uart_;
+
+        // param
+        std::string movebase_polygon_str_;
+        std::vector<float*> movebase_polygon_;
+        float moveback_distance_;
+        float visual_angle_;
+        float round_distance_;
+        float round_distance_min_;
+        float round_angle_limit_;
+        float pannel_length_;
+        float obstacle_distance_;
+        float obstacle_angle_min_;
+        float obstacle_angle_max_;
+        float obstacle_deadzone_;
+        float pretouch_distance_;
+        float pretouch_timeout_;
+        float align_distance_;
+        float align_aim_distance_min_;
+        float prearrive_lspeed_;
+        float reflector_overtime_;
+        float charger_overtime_;
+        float align_angle_error_;
+        float align_y_offset_max_;
+        float angle_p_, aspeed_p_, spin_aspeed_p_;
+        bool debug_info_;
+
+        void StepChange(StepEnum nextstep);
+        float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);
+
         void loop();
         void start();
         void stop();
         void cancel();
         void shutdown();
-        
 
         void setWaitStable(unsigned int sec);
         bool isStable();
@@ -137,86 +225,6 @@ class ROSAutoCharge
         }
         
         unsigned int getStep();
-
-
-    private:
-        ros::NodeHandle nh_;
-        tf::TransformListener listener_, laser_listener_;
-        AutoCharge_Server *as_;
-        ReflectorDetect reflector_;
-
-        ros::Subscriber laser_scan_sub_;
-        ros::Publisher cmd_pub_;
-
-        std::string laser_topic_, cmd_vel_topic_, pannel_frame_id_, base_frame_id_, laser_frame_id_;
-
-        tf::StampedTransform transform_;
-
-        ros::Duration period_, motion_waittime_, stable_waittime_;
-        ros::Duration scan_overtime_, pannel_overtime_, obstacle_overtime_, charge_overtime_;
-
-        ros::Time search_time_, last_scan_time_, last_time_, tf_now_, tf_last_, last_stable_time_, cancel_time_, last_reflector_time_, last_charge_time_;
-
-        geometry_msgs::Twist cmd_vel_;
-
-        ros_autocharge_action::action1Feedback feedback_;
-        ros_autocharge_action::action1Result result_;
-
-        int state_;
-        unsigned int step_;
-        bool tf_rev_;
-        bool have_obstacle_;
-        bool wait_stable_;
-        bool moveback_;
-        bool scan_ready_;
-        bool reflector_rev_;
-        bool reflector_ok_;
-        uint32_t mode_;
-        geometry_msgs::Pose2D target_pose_;
-        double spin_angle_;
-        double round_target_x_;
-        double round_x_min_;
-        double round_angle_max_;
-
-        float target_speed_, target_aspeed_, target_angle_;
-        float facc_, fdec_, bacc_, bdec_;
-        float x_, y_, z_, yaw_, x_temp_, y_temp_, yaw_temp_;
-        float lspeed_max_, aspeed_max_;
-        float angle_p_, aspeed_p_;
-        
-
-        struct acc_data
-        {
-            float facc, fdec, bacc, bdec;
-            float targetspeed, setspeed;
-        }LSpeed_, ASpeed_;
-        
-        std::string UARTPort_;
-        int UARTBaudrate_;
-
-        class ChargerUART *uart_;
-
-        // param
-        std::string movebase_polygon_str_;
-        std::vector<float*> movebase_polygon_;
-        float moveback_distance_;
-        float visual_angle_;
-        float round_distance_;
-        float round_distance_min_;
-        float round_angle_limit_;
-        float pannel_length_;
-        float obstacle_distance_;
-        float obstacle_angle_min_;
-        float obstacle_angle_max_;
-        float obstacle_deadzone_;
-        float pretouch_distance_;
-        float pretouch_timeout_;
-        float align_distance_;
-        float align_aim_distance_min_;
-        float prearrive_lspeed_;
-
-        void StepChange(StepEnum nextstep);
-        float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);
 };
 
 

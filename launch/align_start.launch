@@ -2,7 +2,7 @@
 
     <node pkg="ros_autocharge_action" type="align_client" name="align_client_node" output="screen" required="true">
         <param name="length" type="double" value="0.15" />
-        <param name="x" type="double" value="0.8" />
+        <param name="x" type="double" value="-0.9" />
         <param name="y" type="double" value="-0.1" />
         <param name="angle" type="double" value="0.18" />
     </node>
