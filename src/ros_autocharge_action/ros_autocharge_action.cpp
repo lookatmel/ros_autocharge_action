@@ -96,7 +96,8 @@ ROSAutoCharge::ROSAutoCharge()
     nh_private.param<int>("uart_baudrate", UARTBaudrate_, 115200);  
 
     cmd_pub_ = nh_.advertise<geometry_msgs::Twist>(cmd_vel_topic_, 10);
-
+    reflector_pub_ = nh_.advertise<reflector_detect::Reflector>("reflector_feedback", 10);
+    laser_scan_sub_ = nh_.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
 
     uart_ = new ChargerUART(UARTPort_, UARTBaudrate_);
     as_ = new AutoCharge_Server(nh_, "AutoCharge_Server", boost::bind(&ROSAutoCharge::executeCB, this, _1), false);
@@ -147,7 +148,7 @@ void ROSAutoCharge::start()
 
     round_angle_max_ = round_angle_limit_;
 
-    laser_scan_sub_ = nh_.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
+    // laser_scan_sub_ = nh_.subscribe(laser_topic_, 100, &ROSAutoCharge::LaserScanCallback, this);
     last_time_ = ros::Time::now();
 }
 
@@ -175,7 +176,7 @@ void ROSAutoCharge::cancel()
 
 void ROSAutoCharge::shutdown()
 {
-    laser_scan_sub_.shutdown();
+    // laser_scan_sub_.shutdown();
 }
 
 unsigned int ROSAutoCharge::getStep()
@@ -204,6 +205,7 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     }
     else if(mode_ == MODE_AUTOCHARGE)
     {
+        uart_->ensurePortState();
         round_target_x_ = fabs(pretouch_distance_) + fabs(round_distance_);
         round_x_min_ = fabs(pretouch_distance_) + fabs(round_distance_min_);
         target_pose_ = newgoal->pose;
@@ -233,7 +235,6 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     reflector_.SetReflectorLength(newgoal->length);
     setLSpeedAccParam(0.1,0.2);
     setASpeedAccParam(3.14/8, 3.14/1);
-    uart_->ensurePortState();
     start();
 
     ros::Rate r(50);
@@ -541,6 +542,7 @@ void ROSAutoCharge::LaserScanCallback(const sensor_msgs::LaserScan::ConstPtr &sc
     {
         reflector_ok_ = true;
         last_reflector_time_ = ros::Time::now();
+        reflector_pub_.publish(reflector_.GetNearestReflector());
     }
     else
     {
@@ -556,12 +558,15 @@ void ROSAutoCharge::loop()
     bool chargedata_flag = false;
     tf::Quaternion quat;
 
-    if(uart_->getChargerData(chargedata))
+    if(mode_ == MODE_AUTOCHARGE)
     {
-        chargedata_flag = true;
-        last_charge_time_ = ros::Time::now();
+        if(uart_->getChargerData(chargedata))
+        {
+            chargedata_flag = true;
+            last_charge_time_ = ros::Time::now();
+        }
+        if(ros::Time::now() - last_charge_time_ > ros::Duration(0.2)) chargedata_flag = false;
     }
-    if(ros::Time::now() - last_charge_time_ > ros::Duration(0.2)) chargedata_flag = false;
 
     period_ = ros::Time::now() - last_time_;
     // ROS_INFO("Period:%0.5f", period_.toSec());
