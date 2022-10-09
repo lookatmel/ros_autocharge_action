@@ -234,13 +234,16 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     }
     reflector_.SetReflectorLength(newgoal->length);
     setLSpeedAccParam(0.1,0.2);
-    setASpeedAccParam(3.14/8, 3.14/1);
+    setASpeedAccParam(3.14/1, 3.14/1);
     start();
 
     ros::Rate r(50);
     while(1)
     {
-        uart_->PortLoop();
+        if(mode_ == MODE_AUTOCHARGE)
+        {
+            uart_->PortLoop();
+        }
         if(!ros::ok() || !as_->isActive())
         {
             publishZeroSpeed();
@@ -913,7 +916,7 @@ void ROSAutoCharge::loop()
             }
             else
             {
-                if(fabs(x_) - pretouch_distance_ < 0.05)
+                if(fabs(x_) - pretouch_distance_ < 0.05 && mode_ == MODE_AUTOCHARGE)
                     setLSpeedWithAcc(0.02);
                 else
                     setLSpeedWithAcc(0.05);
