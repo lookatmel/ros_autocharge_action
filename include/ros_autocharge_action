@@ -9,6 +9,7 @@
 
 #include <actionlib/server/simple_action_server.h>
 #include <ros_autocharge_action/action1Action.h>
+#include <actionlib/client/simple_action_client.h>
 
 #include "reflector_detect/reflector_detect"
 
@@ -33,6 +34,22 @@ class ROSAutoCharge
 {
     protected:
     public:
+        enum ErrCodeEnum
+        {
+            ERR_NONE,
+            ERR_INVAILD_LENGTH,
+            ERR_INVAILD_MODE,
+            ERR_TOO_CLOSE,
+            ERR_TOO_FAR,
+            ERR_REFLECTOR_LOST,
+            ERR_LASER,
+            ERR_OBSTACLE,
+            ERR_CHARGER,
+            ERR_ROUND_TOO_CLOSE,
+            ERR_PRETOUCH_OVERTIME
+
+        };
+    
         enum StepEnum
         {
             STEP_INIT,
@@ -146,6 +163,7 @@ class ROSAutoCharge
         bool debug_info_;
 
         void StepChange(StepEnum nextstep);
+        void SetError(ErrCodeEnum code);
         float getAccSpeed(float facc , float fdec , float bacc , float bdec , float target , float now_set, float real_value, double period);
 
         void loop();

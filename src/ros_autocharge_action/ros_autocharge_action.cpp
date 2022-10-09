@@ -190,9 +190,11 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     ROS_INFO("Got a Goal:%d Length:%0.2f x:%0.4f y:%0.4f angle:%0.2f", \
             newgoal->startmode, newgoal->length, newgoal->pose.x, newgoal->pose.y, newgoal->pose.theta);
     mode_ = newgoal->startmode;
+    start();
     if(newgoal->length < 0.05)
     {
         ROS_ERROR("Invaild Reflector Length!");
+        SetError(ERR_INVAILD_LENGTH);
         as_->setAborted(result_);
         return;
     }
@@ -200,6 +202,7 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     if(mode_ >= MODE_END || mode_ == MODE_CANCEL)
     {
         ROS_ERROR("Invaild Mode!");
+        SetError(ERR_INVAILD_MODE);
         as_->setAborted(result_);
         return;
     }
@@ -218,12 +221,14 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
         if(fabs(newgoal->pose.x) < fabs(align_aim_distance_min_))
         {
             ROS_ERROR("Align Distance:%0.4f too close!", newgoal->pose.x);
+            SetError(ERR_TOO_CLOSE);
             as_->setAborted(result_);
             return;
         }
         if(fabs(newgoal->pose.y) > fabs(align_y_offset_max_))
         {
             ROS_ERROR("Align y:%0.4f too far!", newgoal->pose.y);
+            SetError(ERR_TOO_FAR);
             as_->setAborted(result_);
             return;
         }
@@ -235,7 +240,7 @@ void ROSAutoCharge::executeCB(const ros_autocharge_action::action1GoalConstPtr &
     reflector_.SetReflectorLength(newgoal->length);
     setLSpeedAccParam(0.1,0.2);
     setASpeedAccParam(3.14/1, 3.14/1);
-    start();
+    
 
     ros::Rate r(50);
     while(1)
@@ -609,7 +614,7 @@ void ROSAutoCharge::loop()
     {
         double stime;
         case STEP_INIT:
-            if(mode_ == 3)
+            if(mode_ == MODE_FEEDBACK)
             {
                 StepChange(STEP_FEEDBACK);
                 if(debug_info_) ROS_INFO("Feedback mode");
@@ -619,7 +624,7 @@ void ROSAutoCharge::loop()
                 scan_overtime_ += period_;
                 if(scan_overtime_.toSec() > 10)
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_LASER);
                     ROS_ERROR("Fail to get Laserscan!");
                 }
             }
@@ -628,7 +633,7 @@ void ROSAutoCharge::loop()
                 obstacle_overtime_ += period_;
                 if(obstacle_overtime_.toSec() > 10)
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_OBSTACLE);
                     ROS_ERROR("Charge fail: Obstacle!");
                 }
             }
@@ -640,7 +645,7 @@ void ROSAutoCharge::loop()
                     // StepChange(STEP_SEARCH);
                     // search_time = ros::Time::now();
                     // ROS_INFO("Charge Searching!");
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_REFLECTOR_LOST);
                     ROS_ERROR("Reflector not exist!");
                 }
             }
@@ -649,7 +654,7 @@ void ROSAutoCharge::loop()
                 charge_overtime_ += period_;
                 if(charge_overtime_.toSec() > fabs(charger_overtime_))
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_CHARGER);
                     ROS_ERROR("Charge moudle error!");
                 }
             }
@@ -679,7 +684,7 @@ void ROSAutoCharge::loop()
             {
                 setLSpeed(0);
                 setASpeedWithAcc(0);
-                StepChange(STEP_ERROR);
+                SetError(ERR_REFLECTOR_LOST);
             }
             else
             {
@@ -704,7 +709,7 @@ void ROSAutoCharge::loop()
                 pannel_overtime_ += period_;
                 if(pannel_overtime_.toSec() > fabs(reflector_overtime_))
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_REFLECTOR_LOST);
                     setLSpeedWithAcc(0);
                     setASpeedWithAcc(0);
                     ROS_ERROR("Charge Error : reflector error!");
@@ -741,7 +746,7 @@ void ROSAutoCharge::loop()
         
             if(fabs(x_) < round_x_min_)  // too close
             {
-                StepChange(STEP_ERROR);
+                SetError(ERR_ROUND_TOO_CLOSE);
                 setAllSpeedZeroWithAcc();
                 ROS_ERROR("Charge Error : too close %0.4f!", x_);
                 break;
@@ -815,7 +820,7 @@ void ROSAutoCharge::loop()
                 pannel_overtime_ += period_;
                 if(pannel_overtime_.toSec() > fabs(reflector_overtime_))
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_REFLECTOR_LOST);
                     setLSpeedWithAcc(0);
                     setASpeedWithAcc(0);
                     ROS_ERROR("Charge Error : reflector error!");
@@ -871,7 +876,7 @@ void ROSAutoCharge::loop()
                 pannel_overtime_ += period_;
                 if(pannel_overtime_.toSec() > fabs(reflector_overtime_))
                 {
-                    StepChange(STEP_ERROR);
+                    SetError(ERR_REFLECTOR_LOST);
                     setLSpeedWithAcc(0);
                     setASpeedWithAcc(0);
                     ROS_ERROR("Charge Error : reflector error!");
@@ -927,7 +932,7 @@ void ROSAutoCharge::loop()
             motion_waittime_ += period_;
             if(motion_waittime_ > ros::Duration(fabs(pretouch_timeout_)))
             {
-                StepChange(STEP_ERROR);
+                SetError(ERR_PRETOUCH_OVERTIME);
                 setAllSpeedZero();
                 ROS_ERROR("PreTouch overtime!");
             }
@@ -961,7 +966,7 @@ void ROSAutoCharge::loop()
             motion_waittime_ += period_;
             if(motion_waittime_ > ros::Duration(fabs(pretouch_timeout_)))
             {
-                StepChange(STEP_ERROR);
+                SetError(ERR_PRETOUCH_OVERTIME);
                 setAllSpeedZero();
                 ROS_ERROR("PreArrive overtime!");
             }
@@ -996,6 +1001,10 @@ void ROSAutoCharge::loop()
             break;
         case STEP_ARRIVE:
             if(debug_info_) ROS_INFO("ARRIVE X:%0.4f Y: %0.4f Angle:%0.4f", x_, y_, yaw_ * 180 / M_PI);
+            StepChange(STEP_SUCCESS);
+            break;
+        case STEP_SUCCESS :
+            setAllSpeedZero();
             break;
         case STEP_CANCEL :
             setAllSpeedZero();
@@ -1035,7 +1044,24 @@ void ROSAutoCharge::StepChange(StepEnum nextstep)
     obstacle_overtime_.fromSec(0);
     pannel_overtime_.fromSec(0);
 
+    if(nextstep == STEP_SUCCESS || nextstep == STEP_CANCEL)
+    {
+        result_.last_step = step_;
+        result_.error_code = ERR_NONE;
+    }
     step_ = nextstep;
+}
+
+void ROSAutoCharge::SetError(ErrCodeEnum code)
+{
+    motion_waittime_.fromSec(0);
+    obstacle_overtime_.fromSec(0);
+    pannel_overtime_.fromSec(0);
+
+    result_.error_code = code;
+    result_.last_step = step_;
+    result_.result = actionlib::SimpleClientGoalState::ABORTED;
+    step_ = STEP_ERROR;
 }
 
 

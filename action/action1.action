@@ -5,6 +5,8 @@ geometry_msgs/Pose2D pose
 ---
 # Define the result
 uint32 result
+uint32 last_step
+uint32 error_code
 ---
 # Define a feedback message
 uint32 step

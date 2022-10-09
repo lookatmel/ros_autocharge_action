@@ -38,7 +38,7 @@ void feedbackCallback(const ros_autocharge_action::action1FeedbackConstPtr &feed
     tf2::Quaternion quat;
     tf2::convert(feedback->poseonreflector.orientation, quat);
     ROS_INFO("Feedback:%d x:%0.4f y:%0.4f angle:%0.4f int:%d", feedback->step, \
-            feedback->poseonreflector.position.x, feedback->poseonreflector.position.y, tf2::getYaw(quat), feedback->reflector_intensity);
+            feedback->poseonreflector.position.x, feedback->poseonreflector.position.y, tf2::getYaw(quat) * 180.0 / M_PI, feedback->reflector_intensity);
     // if(feedback->Step == 5 || feedback->Step == 6)
     // {
     //     goal.startmode = 2;
